@@ -2,7 +2,7 @@ use std::ops::{Add, Sub, BitAnd, BitOr, BitXor};
 
 use std::fmt;
 
-/// Represents an unsigned 6-bit integer.
+#[derive(Clone, Copy)]
 pub struct U6 {
     pub value: u8,
 }
@@ -83,5 +83,11 @@ impl PartialEq for U6 {
 impl fmt::LowerHex for U6 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:02x}", self.value())
+    }
+}
+
+impl From<U6> for u32 {
+    fn from(u5: U6) -> u32 {
+        u5.value().into()
     }
 }
