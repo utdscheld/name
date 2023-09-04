@@ -101,6 +101,7 @@ pub fn write_int(mut file: &File, data: u32) -> std::io::Result<()> {
 #[derive(Debug, PartialEq)]
 enum AssemblerState {
     Initial,
+    Scanning,
     CollectingRArguments,
     CollectingIArguments,
 }
@@ -293,13 +294,17 @@ pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
 
     while tokens.len() > 0 {
         let token = tokens.remove(0);
-        println!("Token: {} {:?}", token, i_args);
 
         match state {
-            AssemblerState::Initial => match r_operation(&token) {
+            AssemblerState::Initial => match token {
+                "main:" => state = AssemblerState::Scanning,
+                _ => return Err("Code must begin with 'main' label")
+            },
+            AssemblerState::Scanning => match r_operation(&token) {
                 Ok(instr_info) => {
                     state = AssemblerState::CollectingRArguments;
 
+                    println!("-----------------------------------");
                     println!(
                         "[R] {} - shamt [{:x}] - funct [{:x}]",
                         token, instr_info.shamt, instr_info.funct
@@ -313,6 +318,7 @@ pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
                     Ok(instr_info) => {
                         state = AssemblerState::CollectingIArguments;
 
+                        println!("-----------------------------------");
                         println!("[I] {} - opcode [{:x}]", token, instr_info.opcode);
 
                         i_struct = instr_info;
@@ -351,7 +357,7 @@ pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
                         return Err("Failed to write to output binary");
                     }
 
-                    state = AssemblerState::Initial;
+                    state = AssemblerState::Scanning;
                 }
             }
             AssemblerState::CollectingIArguments => {
@@ -362,7 +368,7 @@ pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
                         return Err("Failed to write to output binary");
                     }
 
-                    state = AssemblerState::Initial;
+                    state = AssemblerState::Scanning;
                 }
             }
             _ => (),
