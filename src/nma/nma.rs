@@ -1,5 +1,6 @@
 // NAME Mips Assembler
 
+use crate::args::Args;
 use crate::u5::U5;
 use crate::u6::U6;
 use std::fs::File;
@@ -269,7 +270,10 @@ fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> 
     Ok(result)
 }
 
-pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
+pub fn assemble(args: &Args) -> Result<(), &'static str> {
+    let input_fn = &args.input_as;
+    let output_fn = &args.output_as;
+
     let file_contents = read_file(input_fn);
     let mut tokens = tokenize(&file_contents);
 
@@ -298,7 +302,7 @@ pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
         match state {
             AssemblerState::Initial => match token {
                 "main:" => state = AssemblerState::Scanning,
-                _ => return Err("Code must begin with 'main' label")
+                _ => return Err("Code must begin with 'main' label"),
             },
             AssemblerState::Scanning => match r_operation(&token) {
                 Ok(instr_info) => {

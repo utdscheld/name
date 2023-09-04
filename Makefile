@@ -9,8 +9,12 @@ CARGO := cargo
 build:
 	$(CARGO) build
 
+CONFIG := configs/default.toml
+INPUT := .artifacts/mips_test.asm
+OUTPUT := output.o
+
 run:
-	$(CARGO) run
+	$(CARGO) run $(CONFIG) $(INPUT) $(OUTPUT)
 
 fmt:
 	$(CARGO) fmt
