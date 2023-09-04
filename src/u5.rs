@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub, BitAnd, BitOr, BitXor};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Sub};
 
 use std::fmt;
 

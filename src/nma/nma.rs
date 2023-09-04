@@ -1,144 +1,285 @@
 // NAME Mips Assembler
 
-use std::fs;
-use std::str;
 use crate::u5::U5;
 use crate::u6::U6;
+use std::fs::File;
+use std::fs::{self, copy};
+use std::io::Write;
+use std::str;
 
-const R_EXPECTED_ARGS : usize = 3;
+const R_EXPECTED_ARGS: usize = 3;
+
+enum R_form {
+    NONE,
+    RD_RS_RT,
+    RS,
+    RD_RT_SHAMT,
+}
 
 pub struct R {
     shamt: U5,
-    funct: U6
+    funct: U6,
+    form: R_form,
 }
 
-const I_EXPECTED_ARGS : usize = 2;
+const I_EXPECTED_ARGS: usize = 2;
 
 pub struct I {
-    opcode: U5
+    opcode: U5,
 }
 
 pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
     match mnemonic {
-        "add" => Ok(R { shamt : U5 {value : 0}, funct : U6 {value : 0x20}}),
-        "sub" => Ok(R { shamt : U5 {value : 0}, funct : U6 {value : 0x22}}),
-        "sll" => Ok(R { shamt : U5 {value : 0}, funct : U6 {value : 0x00}}),
-        "srl" => Ok(R { shamt : U5 {value : 0}, funct : U6 {value : 0x02}}),
+        "add" => Ok(R {
+            shamt: U5 { value: 0 },
+            funct: U6 { value: 0x20 },
+            form: R_form::RD_RS_RT,
+        }),
+        "sub" => Ok(R {
+            shamt: U5 { value: 0 },
+            funct: U6 { value: 0x22 },
+            form: R_form::RD_RS_RT,
+        }),
+        "sll" => Ok(R {
+            shamt: U5 { value: 0 },
+            funct: U6 { value: 0x00 },
+            form: R_form::RD_RT_SHAMT,
+        }),
+        "srl" => Ok(R {
+            shamt: U5 { value: 0 },
+            funct: U6 { value: 0x02 },
+            form: R_form::RD_RT_SHAMT,
+        }),
         _ => Err("Failed to match R-instr mnemonic"),
     }
 }
 
 pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
     match mnemonic {
-        "ori" => Ok(I { opcode: U5 {value : 0xd} }),
+        "ori" => Ok(I {
+            opcode: U5 { value: 0xd },
+        }),
         _ => Err("Failed to match I-instr mnemonic"),
     }
 }
 
-// pub fn is_R(mnemonic: &str) -> bool {
-//     match mnemonic {
-//         | "add"   | "addu" | "and"
-//         | "jr"    | "nor"  | "or"
-//         | "slt"   | "sltu" | "sll"
-//         | "srl"   | "sub"  | "subu"
-//         | "div"   | "divu" | "mfhi"
-//         | "mflo"  | "mfc0" | "mult"
-//         | "multu" | "sra"
-//         => true,
-//         _ => false
-//     }
-// }
-
 pub fn read_file(file_path: &str) -> String {
-    fs::read_to_string(file_path)
-        .expect("Failed to read the file")
+    fs::read_to_string(file_path).expect("Failed to read the file")
 }
 
 pub fn tokenize(raw_text: &str) -> Vec<&str> {
-    raw_text
-        .split_whitespace()
-        .collect::<Vec<&str>>()
+    raw_text.split_whitespace().collect::<Vec<&str>>()
 }
 
-#[derive(Debug)]
+pub fn write_int(mut file: &File, data: u32) -> std::io::Result<()> {
+    // Create a 32-length buffer
+    let mut padded_buffer: [u8; 4] = [0; 4];
+
+    // Convert data into bytes
+    let bytes = data.to_be_bytes();
+
+    // Copy bytes into buffer at offset s.t. value is left-padded with 0s
+    let copy_index = 4 - bytes.len();
+    padded_buffer[copy_index..].copy_from_slice(&bytes);
+
+    // Write to file
+    file.write_all(&padded_buffer)
+}
+
+#[derive(Debug, PartialEq)]
 enum AssemblerState {
     Initial,
     CollectingRArguments,
-    CollectingIArguments
+    CollectingIArguments,
 }
 
-fn assemble_r(r_struct : &mut R, r_args : Vec<&str>) -> u32 {
-    // opcode : 31 - 26
-    let mut result = 0x00000;
-    // rs
-    // rt
-    // rd
-
-    // shamt : 6 - 10
-    let shamt : u32 = r_struct.shamt.into();
-    result = (result << 5) | shamt;
-
-    // funct : 0 - 5
-    let funct : u32 = r_struct.funct.into();
-    result = (result << 6) | funct;
-
-    println!("{:0width$b}", result, width=32);
-    result
+fn reg_number(mnemonic: &str) -> Result<u32, &'static str> {
+    if mnemonic.len() != 3 {
+        return Err("Mnemonic out of bounds");
+    }
+    match mnemonic.chars().nth(2) {
+        Some(c) => match c.to_digit(10) {
+            Some(digit) => Ok(digit),
+            _ => Err("Invalid register index"),
+        },
+        _ => Err("Malformed mnemonic"),
+    }
 }
 
-pub fn assemble(file_path : &str) -> () {
-    let file_contents = read_file(file_path);
-    let tokens = tokenize(&file_contents);
+fn assemble_reg(mnemonic: &str) -> Result<u32, &'static str> {
+    if !mnemonic.starts_with("$") {
+        return match mnemonic.parse::<u32>() {
+            Ok(v) => Ok(v),
+            Err(_) => Err("Failed to parse shamt"),
+        };
+    }
 
-    let mut state = AssemblerState::Initial;
-    let mut r_struct: R = R { shamt : U5 {value : 0}, funct : U6 {value : 0}};
-    let mut r_args: Vec<&str> = Vec::new();
-    let mut i_struct: I = I { opcode : U5 {value : 0}};
-    let mut i_args: Vec<&str> = Vec::new();
-
-    for token in tokens {
-        // println!("State: {:?}", state);
-        match state {
-            AssemblerState::Initial => {
-                // two options here -
-                // 1. nest the (match r .. else match i .. else ...)
-                // 2. add is_r, is_i etc
-                // 3. Put them one after another like this (bad, will remove)
-                // leaning towards 1
-                match r_operation(&token) {
-                    Ok(instr_info) => {
-                        state = AssemblerState::CollectingRArguments;
-
-                        println!("[R] {} - shamt [{:x}] - funct [{:x}]", token, instr_info.shamt, instr_info.funct);
-                        
-                        r_struct = instr_info;
-                        r_args.clear();
-                        r_args.push(token) 
-                    },
-                    _ => match i_operation(&token) {
-                            Ok(instr_info) => {
-                                state = AssemblerState::CollectingIArguments;
-
-                                println!("[I] {} - opcode [{:x}]", token, instr_info.opcode);
-
-                                i_struct = instr_info;
-                                i_args.clear();
-                                i_args.push(token)
-                            },
-                            _ => ()
-                        }
+    // match on everything after $
+    match &mnemonic[1..] {
+        "zero" => Ok(0),
+        "at" => Ok(1),
+        "gp" => Ok(28),
+        "sp" => Ok(29),
+        "fp" => Ok(30),
+        "ra" => Ok(31),
+        _ => {
+            let n = reg_number(mnemonic)?;
+            let reg = match mnemonic.chars().nth(1) {
+                Some('v') => 2 + n,
+                Some('a') => 4 + n,
+                Some('t') => {
+                    if n <= 7 {
+                        8 + n
+                    } else {
+                        24 + n
+                    }
                 }
-            },
-            AssemblerState::CollectingRArguments => {
-                // println!("Collecting args {:?}", r_args);
-                if r_args.len() == R_EXPECTED_ARGS {
-                    let _assembled_r = assemble_r(&mut r_struct, r_args.clone());
-                    state = AssemblerState::Initial;
-                } else {
-                    r_args.push(token);
-                }
-            },
-            _ => ()
+                Some('s') => 16 + n,
+                _ => 99,
+            };
+            if reg <= 31 {
+                Ok(reg)
+            } else {
+                Err("Register out of bounds")
+            }
         }
     }
+}
+
+fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> {
+    println!("{:?}", r_args);
+
+    let mut rs: u32 = 0;
+    let mut rt: u32 = 0;
+    let mut rd: u32 = 0;
+    let mut shamt: u32 = 0;
+
+    match r_struct.form {
+        R_form::RD_RS_RT => {
+            rd = assemble_reg(r_args[1])?;
+            rs = assemble_reg(r_args[2])?;
+            rt = assemble_reg(r_args[3])?;
+            shamt = r_struct.shamt.into();
+        }
+        R_form::RD_RT_SHAMT => {
+            rd = assemble_reg(r_args[1])?;
+            rt = assemble_reg(r_args[2])?;
+            shamt = assemble_reg(r_args[3])?
+        }
+        _ => (),
+    };
+
+    let funct: u32 = r_struct.funct.into();
+
+    // opcode : 31 - 26
+    let mut result = 0x000000;
+
+    // rs :     25 - 21
+    println!("rs: {}", rs);
+    result = (result << 6) | rs;
+
+    // rt :     20 - 16
+    println!("rt: {}", rt);
+    result = (result << 5) | rt;
+
+    // rd :     15 - 11
+    println!("rd: {}", rd);
+    result = (result << 5) | rd;
+
+    // shamt : 10 - 6
+    println!("shamt: {}", shamt);
+    result = (result << 5) | shamt;
+
+    // funct : 5 - 0
+    result = (result << 6) | funct;
+
+    println!(
+        "0x{:0shortwidth$x} {:0width$b}",
+        result,
+        result,
+        shortwidth = 8,
+        width = 32
+    );
+    Ok(result)
+}
+
+pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
+    let file_contents = read_file(input_fn);
+    let mut tokens = tokenize(&file_contents);
+
+    let output_file: File;
+    match File::create(output_fn) {
+        Ok(v) => output_file = v,
+        Err(e) => return Err("Failed to open output file"),
+    }
+
+    let mut state = AssemblerState::Initial;
+    let mut r_struct: R = R {
+        shamt: U5 { value: 0 },
+        funct: U6 { value: 0 },
+        form: R_form::NONE,
+    };
+    let mut r_args: Vec<&str> = Vec::new();
+    let mut i_struct: I = I {
+        opcode: U5 { value: 0 },
+    };
+    let mut i_args: Vec<&str> = Vec::new();
+
+    while tokens.len() > 0 {
+        let token = tokens.remove(0);
+        // println!("Tokens: {} {:?}", token, tokens);
+
+        match state {
+            AssemblerState::Initial => match r_operation(&token) {
+                Ok(instr_info) => {
+                    state = AssemblerState::CollectingRArguments;
+
+                    println!(
+                        "[R] {} - shamt [{:x}] - funct [{:x}]",
+                        token, instr_info.shamt, instr_info.funct
+                    );
+
+                    r_struct = instr_info;
+                    r_args.clear();
+                    r_args.push(token)
+                }
+                _ => match i_operation(&token) {
+                    Ok(instr_info) => {
+                        state = AssemblerState::CollectingIArguments;
+
+                        println!("[I] {} - opcode [{:x}]", token, instr_info.opcode);
+
+                        i_struct = instr_info;
+                        i_args.clear();
+                        i_args.push(token)
+                    }
+                    _ => (),
+                },
+            },
+            AssemblerState::CollectingRArguments => {
+                // "1 + " handles instruction mnemonic being included
+                if r_args.len() == 1 + R_EXPECTED_ARGS {
+                    let _assembled_r = assemble_r(&mut r_struct, r_args.clone())?;
+                    if let Err(_) = write_int(&output_file, _assembled_r) {
+                        return Err("Failed to write to output binary");
+                    }
+
+                    // Put the current token back!
+                    tokens.insert(0, token);
+                    state = AssemblerState::Initial;
+                } else {
+                    let filtered_token = if token.ends_with(',') {
+                        &token[..token.len() - 1]
+                    } else {
+                        token
+                    };
+                    // Filter out comma
+                    r_args.push(filtered_token);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    Ok(())
 }

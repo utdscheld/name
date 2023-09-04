@@ -7,6 +7,7 @@ pub mod u6;
 
 use nma::nma::assemble;
 
-fn main() {
-    assemble("mips_test.asm");
+fn main() -> Result<(), &'static str> {
+    assemble(".artifacts/mips_test.asm", ".artifacts/mips_test.out")?;
+    Ok(())
 }
