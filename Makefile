@@ -12,6 +12,9 @@ build:
 run:
 	$(CARGO) run
 
+fmt:
+	$(CARGO) fmt
+
 clean:
 	$(CARGO) clean
 	rm -f $(BUILD_DIR)/$(BINARY_NAME)

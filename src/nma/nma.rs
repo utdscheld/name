@@ -24,8 +24,14 @@ pub struct R {
 
 const I_EXPECTED_ARGS: usize = 2;
 
+enum I_form {
+    NONE,
+    RT_IMM,
+}
+
 pub struct I {
-    opcode: U5,
+    opcode: U6,
+    form: I_form,
 }
 
 pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
@@ -50,14 +56,20 @@ pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
             funct: U6 { value: 0x02 },
             form: R_form::RD_RT_SHAMT,
         }),
+        "xor" => Ok(R {
+            shamt: U5 { value: 0 },
+            funct: U6 { value: 0x26 },
+            form: R_form::RD_RS_RT,
+        }),
         _ => Err("Failed to match R-instr mnemonic"),
     }
 }
 
 pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
     match mnemonic {
-        "ori" => Ok(I {
-            opcode: U5 { value: 0xd },
+        "lui" => Ok(I {
+            opcode: U6 { value: 0xf },
+            form: I_form::RT_IMM,
         }),
         _ => Err("Failed to match I-instr mnemonic"),
     }
@@ -131,7 +143,9 @@ fn assemble_reg(mnemonic: &str) -> Result<u32, &'static str> {
                     if n <= 7 {
                         8 + n
                     } else {
-                        24 + n
+                        // t8, t9 = 24, 25
+                        // 24 - 8 + n
+                        16 + n
                     }
                 }
                 Some('s') => 16 + n,
@@ -147,8 +161,6 @@ fn assemble_reg(mnemonic: &str) -> Result<u32, &'static str> {
 }
 
 fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> {
-    println!("{:?}", r_args);
-
     let mut rs: u32 = 0;
     let mut rt: u32 = 0;
     let mut rd: u32 = 0;
@@ -166,10 +178,17 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
             rt = assemble_reg(r_args[2])?;
             shamt = assemble_reg(r_args[3])?
         }
-        _ => (),
+        _ => return Err("Unexpected R_form"),
     };
 
-    let funct: u32 = r_struct.funct.into();
+    let mut funct: u32 = r_struct.funct.into();
+
+    // Mask
+    rs &= 0b1_1111;
+    rt &= 0b1_1111;
+    rd &= 0b1_1111;
+    shamt &= 0b1_1111;
+    funct &= 0b11_1111;
 
     // opcode : 31 - 26
     let mut result = 0x000000;
@@ -203,6 +222,52 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
     Ok(result)
 }
 
+fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> {
+    let mut rs: u32 = 0;
+    let mut rt: u32 = 0;
+    let mut imm: u32 = 0;
+
+    match i_struct.form {
+        I_form::RT_IMM => {
+            rt = assemble_reg(i_args[1])?;
+            imm = assemble_reg(i_args[2])?;
+        }
+        _ => return Err("Unexpected I_form"),
+    };
+
+    let mut opcode: u32 = i_struct.opcode.into();
+
+    // Mask
+    rs &= 0b1_1111;
+    rt &= 0b1_1111;
+    opcode &= 0b11_1111;
+    imm &= 0b1111_1111_1111_1111;
+
+    // opcode : 31 - 26
+    let mut result = opcode;
+
+    // rs :     25 - 21
+    println!("rs: {}", rs);
+    result = (result << 5) | rs;
+
+    // rt :     20 - 16
+    println!("rt: {}", rt);
+    result = (result << 5) | rt;
+
+    // imm :    15 - 0
+    println!("imm: {}", imm);
+    result = (result << 16) | imm;
+
+    println!(
+        "0x{:0shortwidth$x} {:0width$b}",
+        result,
+        result,
+        shortwidth = 8,
+        width = 32
+    );
+    Ok(result)
+}
+
 pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
     let file_contents = read_file(input_fn);
     let mut tokens = tokenize(&file_contents);
@@ -221,13 +286,14 @@ pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
     };
     let mut r_args: Vec<&str> = Vec::new();
     let mut i_struct: I = I {
-        opcode: U5 { value: 0 },
+        opcode: U6 { value: 0 },
+        form: I_form::NONE,
     };
     let mut i_args: Vec<&str> = Vec::new();
 
     while tokens.len() > 0 {
         let token = tokens.remove(0);
-        // println!("Tokens: {} {:?}", token, tokens);
+        println!("Token: {} {:?}", token, i_args);
 
         match state {
             AssemblerState::Initial => match r_operation(&token) {
@@ -257,28 +323,50 @@ pub fn assemble(input_fn: &str, output_fn: &str) -> Result<(), &'static str> {
                 },
             },
             AssemblerState::CollectingRArguments => {
+                let filtered_token = if token.ends_with(',') {
+                    &token[..token.len() - 1]
+                } else {
+                    token
+                };
+                // Filter out comma
+                r_args.push(filtered_token);
+            }
+            AssemblerState::CollectingIArguments => {
+                let filtered_token = if token.ends_with(',') {
+                    &token[..token.len() - 1]
+                } else {
+                    token
+                };
+                // Filter out comma
+                i_args.push(filtered_token);
+            }
+        }
+
+        match state {
+            AssemblerState::CollectingRArguments => {
                 // "1 + " handles instruction mnemonic being included
                 if r_args.len() == 1 + R_EXPECTED_ARGS {
-                    let _assembled_r = assemble_r(&mut r_struct, r_args.clone())?;
-                    if let Err(_) = write_int(&output_file, _assembled_r) {
+                    let assembled_r = assemble_r(&mut r_struct, r_args.clone())?;
+                    if let Err(_) = write_int(&output_file, assembled_r) {
                         return Err("Failed to write to output binary");
                     }
 
-                    // Put the current token back!
-                    tokens.insert(0, token);
                     state = AssemblerState::Initial;
-                } else {
-                    let filtered_token = if token.ends_with(',') {
-                        &token[..token.len() - 1]
-                    } else {
-                        token
-                    };
-                    // Filter out comma
-                    r_args.push(filtered_token);
+                }
+            }
+            AssemblerState::CollectingIArguments => {
+                // "1 + " handles instruction mnemonic being included
+                if i_args.len() == 1 + I_EXPECTED_ARGS {
+                    let assembled_i = assemble_i(&mut i_struct, i_args.clone())?;
+                    if let Err(_) = write_int(&output_file, assembled_i) {
+                        return Err("Failed to write to output binary");
+                    }
+
+                    state = AssemblerState::Initial;
                 }
             }
             _ => (),
-        }
+        };
     }
 
     Ok(())
