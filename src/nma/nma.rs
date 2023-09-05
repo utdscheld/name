@@ -1,112 +1,129 @@
-// NAME Mips Assembler
-
+/// NAME Mips Assembler
 use crate::args::Args;
 use crate::u5::U5;
 use crate::u6::U6;
+use std::fs;
 use std::fs::File;
-use std::fs::{self, copy};
 use std::io::Write;
 use std::str;
 
+/// Number of expected arguments for R-type instructions
 const R_EXPECTED_ARGS: usize = 3;
 
-enum R_form {
-    NONE,
-    RD_RS_RT,
-    RS,
-    RD_RT_SHAMT,
+/// The form of an R-type instruction, specificially
+/// which arguments it expects in which order
+enum RForm {
+    None,
+    RdRsRt,
+    // Rs,
+    RdRtShamt,
 }
 
+/// The variable components of an R-type instruction
 pub struct R {
     shamt: U5,
     funct: U6,
-    form: R_form,
+    form: RForm,
 }
 
+/// Number of expected arguments for I-type instructions
 const I_EXPECTED_ARGS: usize = 2;
 
-enum I_form {
-    NONE,
-    RT_IMM,
+/// The form of an I-type instruction, specifically
+/// which arguments it expects in which order
+enum IForm {
+    None,
+    RtImm,
 }
 
+/// The variable components of an I-type instruction
 pub struct I {
     opcode: U6,
-    form: I_form,
+    form: IForm,
 }
 
+/// Parses an R-type instruction mnemonic into an [R]
 pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
     match mnemonic {
         "add" => Ok(R {
             shamt: U5 { value: 0 },
             funct: U6 { value: 0x20 },
-            form: R_form::RD_RS_RT,
+            form: RForm::RdRsRt,
         }),
         "sub" => Ok(R {
             shamt: U5 { value: 0 },
             funct: U6 { value: 0x22 },
-            form: R_form::RD_RS_RT,
+            form: RForm::RdRsRt,
         }),
         "sll" => Ok(R {
             shamt: U5 { value: 0 },
             funct: U6 { value: 0x00 },
-            form: R_form::RD_RT_SHAMT,
+            form: RForm::RdRtShamt,
         }),
         "srl" => Ok(R {
             shamt: U5 { value: 0 },
             funct: U6 { value: 0x02 },
-            form: R_form::RD_RT_SHAMT,
+            form: RForm::RdRtShamt,
         }),
         "xor" => Ok(R {
             shamt: U5 { value: 0 },
             funct: U6 { value: 0x26 },
-            form: R_form::RD_RS_RT,
+            form: RForm::RdRsRt,
         }),
         _ => Err("Failed to match R-instr mnemonic"),
     }
 }
 
+/// Parses an I-type instruction mnemonic into an [I]
 pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
     match mnemonic {
         "lui" => Ok(I {
             opcode: U6 { value: 0xf },
-            form: I_form::RT_IMM,
+            form: IForm::RtImm,
         }),
         _ => Err("Failed to match I-instr mnemonic"),
     }
 }
 
-pub fn read_file(file_path: &str) -> String {
-    fs::read_to_string(file_path).expect("Failed to read the file")
-}
-
+/// Split a string into meaningful, atomic elements of the MIPS language
 pub fn tokenize(raw_text: &str) -> Vec<&str> {
     raw_text.split_whitespace().collect::<Vec<&str>>()
 }
 
-pub fn write_int(mut file: &File, data: u32) -> std::io::Result<()> {
-    // Create a 32-length buffer
-    let mut padded_buffer: [u8; 4] = [0; 4];
+/// Write a u32 into a file, zero-padded to 32 bits (4 bytes)
+pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
+    const PADDED_LENGTH: usize = 4;
+
+    // Create a 4-length buffer
+    let mut padded_buffer: [u8; PADDED_LENGTH] = [0; PADDED_LENGTH];
 
     // Convert data into bytes
-    let bytes = data.to_be_bytes();
+    let bytes: [u8; PADDED_LENGTH] = data.to_be_bytes();
 
     // Copy bytes into buffer at offset s.t. value is left-padded with 0s
-    let copy_index = 4 - bytes.len();
+    let copy_index = PADDED_LENGTH - bytes.len();
     padded_buffer[copy_index..].copy_from_slice(&bytes);
 
     // Write to file
     file.write_all(&padded_buffer)
 }
 
+/// Represents the state of the assembler at any given point
 #[derive(Debug, PartialEq)]
 enum AssemblerState {
+    /// State before any processing has occurred
     Initial,
+    /// The assembler is in the process of scanning in new tokens
     Scanning,
+    /// The assembler has encountered an R-type instruction and
+    /// is collecting its arguments before assembling
     CollectingRArguments,
+    /// The assembler has encountered an I-type instruction and
+    /// is collecting its arguments before assembling
     CollectingIArguments,
 }
 
+/// Converts a numbered mnemonic ($t0, $s8, etc) or literal (55, 67, etc) to its integer representation
 fn reg_number(mnemonic: &str) -> Result<u32, &'static str> {
     if mnemonic.len() != 3 {
         return Err("Mnemonic out of bounds");
@@ -120,6 +137,7 @@ fn reg_number(mnemonic: &str) -> Result<u32, &'static str> {
     }
 }
 
+/// Given a register or number, assemble it into its integer representation
 fn assemble_reg(mnemonic: &str) -> Result<u32, &'static str> {
     if !mnemonic.starts_with("$") {
         return match mnemonic.parse::<u32>() {
@@ -162,6 +180,7 @@ fn assemble_reg(mnemonic: &str) -> Result<u32, &'static str> {
     }
 }
 
+/// Assembles an R-type instruction
 fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> {
     let mut rs: u32 = 0;
     let mut rt: u32 = 0;
@@ -169,13 +188,13 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
     let mut shamt: u32 = 0;
 
     match r_struct.form {
-        R_form::RD_RS_RT => {
+        RForm::RdRsRt => {
             rd = assemble_reg(r_args[1])?;
             rs = assemble_reg(r_args[2])?;
             rt = assemble_reg(r_args[3])?;
             shamt = r_struct.shamt.into();
         }
-        R_form::RD_RT_SHAMT => {
+        RForm::RdRtShamt => {
             rd = assemble_reg(r_args[1])?;
             rt = assemble_reg(r_args[2])?;
             shamt = assemble_reg(r_args[3])?
@@ -224,13 +243,14 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
     Ok(result)
 }
 
+/// Assembles an I-type instruction
 fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> {
     let mut rs: u32 = 0;
     let mut rt: u32 = 0;
     let mut imm: u32 = 0;
 
     match i_struct.form {
-        I_form::RT_IMM => {
+        IForm::RtImm => {
             rt = assemble_reg(i_args[1])?;
             imm = assemble_reg(i_args[2])?;
         }
@@ -270,11 +290,17 @@ fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> 
     Ok(result)
 }
 
+// General assembler entrypoint
 pub fn assemble(args: &Args) -> Result<(), &'static str> {
     let input_fn = &args.input_as;
     let output_fn = &args.output_as;
 
-    let file_contents = read_file(input_fn);
+    let file_contents: String;
+    match fs::read_to_string(input_fn) {
+        Ok(v) => file_contents = v,
+        Err(_) => return Err("Failed to read input file contents"),
+    };
+
     let mut tokens = tokenize(&file_contents);
 
     let output_file: File;
@@ -287,18 +313,20 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     let mut r_struct: R = R {
         shamt: U5 { value: 0 },
         funct: U6 { value: 0 },
-        form: R_form::NONE,
+        form: RForm::None,
     };
     let mut r_args: Vec<&str> = Vec::new();
     let mut i_struct: I = I {
         opcode: U6 { value: 0 },
-        form: I_form::NONE,
+        form: IForm::None,
     };
     let mut i_args: Vec<&str> = Vec::new();
 
+    // Iterate over all tokens
     while tokens.len() > 0 {
         let token = tokens.remove(0);
 
+        // Scan tokens in
         match state {
             AssemblerState::Initial => match token {
                 "main:" => state = AssemblerState::Scanning,
@@ -352,12 +380,13 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
             }
         }
 
+        // Try to assemble if args collected
         match state {
             AssemblerState::CollectingRArguments => {
                 // "1 + " handles instruction mnemonic being included
                 if r_args.len() == 1 + R_EXPECTED_ARGS {
                     let assembled_r = assemble_r(&mut r_struct, r_args.clone())?;
-                    if let Err(_) = write_int(&output_file, assembled_r) {
+                    if let Err(_) = write_u32(&output_file, assembled_r) {
                         return Err("Failed to write to output binary");
                     }
 
@@ -368,7 +397,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 // "1 + " handles instruction mnemonic being included
                 if i_args.len() == 1 + I_EXPECTED_ARGS {
                     let assembled_i = assemble_i(&mut i_struct, i_args.clone())?;
-                    if let Err(_) = write_int(&output_file, assembled_i) {
+                    if let Err(_) = write_u32(&output_file, assembled_i) {
                         return Err("Failed to write to output binary");
                     }
 

@@ -11,6 +11,13 @@ pub struct Config {
     pub as_cmd: String,
 }
 
+pub fn backup_config() -> Config {
+    Config {
+        config_name: "backup config".to_string(),
+        as_cmd: "".to_string(),
+    }
+}
+
 pub fn parse_config(args: &Args) -> Result<Config, Box<dyn std::error::Error>> {
     let mut toml_content = fs::read_to_string(&args.config_fn)?;
 
