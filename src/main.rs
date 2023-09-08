@@ -5,8 +5,8 @@ struct Mips {
     mult_lo: u32,
     pc: usize,
 
-    // Enough for five MIPS instructions.
-    memory: [u32; 5]
+    // Enough for six MIPS instructions.
+    memory: [u32; 6]
 }
 
 struct Rtype {
@@ -55,6 +55,10 @@ impl Mips {
                 //Todo- catch overflows
                 self.regs[ins.rd] = self.regs[ins.rt] + self.regs[ins.rs];
             }
+            // Xor
+            0x26 => {
+                self.regs[ins.rd] = self.regs[ins.rt] ^ self.regs[ins.rs];
+            }
             _ => panic!("R-Type unimplemented instruction")
         }
     }
@@ -64,6 +68,10 @@ impl Mips {
             0xD => {
                 // Rust zero-extends unsigned values when up-casting
                 self.regs[ins.rt] = self.regs[ins.rs] | ins.imm as u32;
+            }
+            // Load Upper Immediate
+            0xF => {
+                self.regs[ins.rt] = (ins.imm as u32) << 16;
             }
             _ => panic!("I-type unimplemented instruction")
         }
@@ -121,9 +129,10 @@ fn main() {
         mult_hi: 0,
         mult_lo: 0,
         pc: 0,
-        memory: [0x34080001, 0x012a4020, 0x01ae6022,
-        0x00108140, 0x00017aa82]
+        memory: [0x014b4820, 0x01ae6022, 0x00108140,
+        0x0017aa82, 0x03197826, 0x3c080032]
     };
+    mips.step_one();
     mips.step_one();
     mips.step_one();
     mips.step_one();
