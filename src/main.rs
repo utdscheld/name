@@ -6,7 +6,7 @@ struct Mips {
     pc: usize,
 
     // Enough for six MIPS instructions.
-    memory: [u32; 6]
+    memory: [u32; 13]
 }
 
 struct Rtype {
@@ -129,13 +129,29 @@ fn main() {
         mult_hi: 0,
         mult_lo: 0,
         pc: 0,
-        memory: [0x014b4820, 0x01ae6022, 0x00108140,
+        memory: [0x3c080032,
+        0x3c090032,
+        0x3c0a0032,
+        0x3c0b0032,
+        0x3c0c0032,
+        0x3c0d0032,
+        0x3c0e0032,
+        0x014b4820, 0x01ae6022, 0x00108140,
         0x0017aa82, 0x03197826, 0x3c080032]
     };
-    mips.step_one();
-    mips.step_one();
-    mips.step_one();
-    mips.step_one();
-    mips.step_one();
-    mips.step_one();
+    // The first instructions load a bunch of registers with 0x500000.
+    for i in 0..8 {
+        mips.step_one();
+    }
+    /*
+    add $t1, $t2, $t3
+    sub $t4, $t5, $t6
+    sll $s0, $s0, 5
+    srl $s5, $s7, 10
+    xor $t7, $t8, $t9
+    lui $t0, 50
+    */
+    for i in 0..6 {
+        mips.step_one();
+    }
 }
