@@ -1,1 +1,1 @@
-# NAME
+# vsname extension
