@@ -12,13 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("vsname2.helloWorld", () => {
 			HelloWorldPanel.createOrShow(context.extensionUri);
 		})
-	)
-
-	let disposable = vscode.commands.registerCommand('vsname2.helloWorld', () => {
-		vscode.window.showInformationMessage('Hello World from vsname2');
-	});
-
-	context.subscriptions.push(disposable);
+	);
 }
 
 // This method is called when your extension is deactivated
