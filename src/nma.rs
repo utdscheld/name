@@ -87,7 +87,10 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
 
 /// Split a string into meaningful, atomic elements of the MIPS language
 pub fn tokenize(raw_text: &str) -> Vec<&str> {
-    raw_text.split_whitespace().collect::<Vec<&str>>()
+    // raw_text.split_whitespace().collect::<Vec<&str>>()
+    raw_text.split(&[',', ' ', '\t', '\r', '\n'][..])
+        .filter(|&s| !s.is_empty())
+        .collect::<Vec<&str>>()
 }
 
 /// Write a u32 into a file, zero-padded to 32 bits (4 bytes)
