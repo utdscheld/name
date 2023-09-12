@@ -1,4 +1,4 @@
-use std::ops::{Add, BitAnd, BitOr, BitXor, Sub};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Sub, BitAndAssign};
 
 use std::fmt;
 
@@ -12,8 +12,14 @@ pub fn mask5(v: u8) -> u8 {
 }
 
 impl U5 {
-    pub fn new(v: u8) -> U5 {
-        U5 { value: mask5(v) }
+    pub fn new(v: u8) -> Result<U5, &'static str> {
+        let masked_value = mask5(v);
+        if masked_value != v { 
+            Err("Tried to place a value larger than 31 into a U5")
+        } else {
+            Ok(U5 { value: mask5(v) })
+        }
+        
     }
 
     pub fn value(&self) -> u8 {
@@ -22,7 +28,7 @@ impl U5 {
 }
 
 impl Add for U5 {
-    type Output = Self;
+    type Output = Result<Self, &'static str>;
 
     fn add(self, other: Self) -> Self::Output {
         let result = self.value() + other.value();
@@ -31,7 +37,7 @@ impl Add for U5 {
 }
 
 impl Sub for U5 {
-    type Output = Self;
+    type Output = Result<Self, &'static str>;
 
     fn sub(self, other: Self) -> Self::Output {
         let result = self.value().wrapping_sub(other.value());
@@ -40,7 +46,7 @@ impl Sub for U5 {
 }
 
 impl BitAnd for U5 {
-    type Output = Self;
+    type Output = Result<Self, &'static str>;
 
     fn bitand(self, other: Self) -> Self::Output {
         let result = self.value() & other.value();
@@ -49,7 +55,7 @@ impl BitAnd for U5 {
 }
 
 impl BitOr for U5 {
-    type Output = Self;
+    type Output = Result<Self, &'static str>;
 
     fn bitor(self, other: Self) -> Self::Output {
         let result = self.value() | other.value();
@@ -58,7 +64,7 @@ impl BitOr for U5 {
 }
 
 impl BitXor for U5 {
-    type Output = Self;
+    type Output = Result<Self, &'static str>;
 
     fn bitxor(self, other: Self) -> Self::Output {
         let result: u8 = self.value() ^ other.value();
@@ -89,5 +95,17 @@ impl fmt::LowerHex for U5 {
 impl From<U5> for u32 {
     fn from(u5: U5) -> u32 {
         u5.value().into()
+    }
+}
+
+impl From<U5> for u16 {
+    fn from(u5: U5) -> u16 {
+        u5.value().into()
+    }
+}
+
+impl BitAndAssign for U5 {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = Self{value: self.value & rhs.value}
     }
 }

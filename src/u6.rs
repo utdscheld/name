@@ -1,4 +1,4 @@
-use std::ops::{Add, BitAnd, BitOr, BitXor, Sub};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Sub, BitAndAssign, Shl};
 
 use std::fmt;
 
@@ -66,6 +66,15 @@ impl BitXor for U6 {
     }
 }
 
+impl Shl for U6 {
+    type Output = Self;
+
+    fn shl(self, other: Self) -> Self::Output {
+        let result: u8 = self.value() << other.value();
+        U6::new(result)
+    }
+}
+
 // Implement Debug to enable pretty printing with println! and debug_assert!
 impl std::fmt::Debug for U6 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -89,5 +98,11 @@ impl fmt::LowerHex for U6 {
 impl From<U6> for u32 {
     fn from(u5: U6) -> u32 {
         u5.value().into()
+    }
+}
+
+impl BitAndAssign for U6 {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = Self{value: self.value & rhs.value}
     }
 }

@@ -1,26 +1,24 @@
-mod nma {
-    pub mod nma;
-}
-
 pub mod u5;
 pub mod u6;
 
 pub mod args;
 pub mod config;
 
+pub mod nma;
+
 use args::parse_args;
-use nma::nma::assemble;
+use nma::assemble;
 
 fn main() -> Result<(), &'static str> {
     // Parse command line arguments and the config file
     let cmd_args = parse_args()?;
-    let config: config::Config;
+    
 
-    match config::parse_config(&cmd_args) {
-        Ok(v) => config = v,
+    let config: config::Config = match config::parse_config(&cmd_args) {
+        Ok(v) => v,
         _ => {
             println!("WARN : Failed to parse config file, defaulting to nma");
-            config = config::backup_config()
+            config::backup_config()
         }
     };
 

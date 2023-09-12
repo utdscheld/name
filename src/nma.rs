@@ -124,13 +124,21 @@ enum AssemblerState {
 }
 
 /// Converts a numbered mnemonic ($t0, $s8, etc) or literal (55, 67, etc) to its integer representation
-fn reg_number(mnemonic: &str) -> Result<u32, &'static str> {
+fn reg_number(mnemonic: &str) -> Result<U5, &'static str> {
     if mnemonic.len() != 3 {
+        println!("{}", mnemonic);
         return Err("Mnemonic out of bounds");
     }
+
     match mnemonic.chars().nth(2) {
         Some(c) => match c.to_digit(10) {
-            Some(digit) => Ok(digit),
+            Some(digit) => {
+                if digit <= 31 {
+                    Ok(U5 { value: digit as u8 })
+                } else {
+                    Err("Expected u8")
+                }
+            }
             _ => Err("Invalid register index"),
         },
         _ => Err("Malformed mnemonic"),
@@ -138,43 +146,42 @@ fn reg_number(mnemonic: &str) -> Result<u32, &'static str> {
 }
 
 /// Given a register or number, assemble it into its integer representation
-fn assemble_reg(mnemonic: &str) -> Result<u32, &'static str> {
-    if !mnemonic.starts_with("$") {
-        return match mnemonic.parse::<u32>() {
-            Ok(v) => Ok(v),
-            Err(_) => Err("Failed to parse shamt"),
-        };
-    }
-
+fn assemble_reg(mnemonic: &str) -> Result<U5, &'static str> {
     // match on everything after $
     match &mnemonic[1..] {
-        "zero" => Ok(0),
-        "at" => Ok(1),
-        "gp" => Ok(28),
-        "sp" => Ok(29),
-        "fp" => Ok(30),
-        "ra" => Ok(31),
+        "zero" => U5::new(0),
+        "at" => U5::new(1),
+        "gp" => U5::new(28),
+        "sp" => U5::new(29),
+        "fp" => U5::new(30),
+        "ra" => U5::new(31),
         _ => {
             let n = reg_number(mnemonic)?;
             let reg = match mnemonic.chars().nth(1) {
-                Some('v') => 2 + n,
-                Some('a') => 4 + n,
+                Some('v') => n + (U5 { value: 2 }),
+                Some('a') => n + (U5 { value: 4 }),
                 Some('t') => {
-                    if n <= 7 {
-                        8 + n
+                    if n.value <= 7 {
+                        n + (U5 { value: 8 })
                     } else {
                         // t8, t9 = 24, 25
                         // 24 - 8 + n
-                        16 + n
+                        n + (U5 { value: 16 })
                     }
                 }
-                Some('s') => 16 + n,
-                _ => 99,
+                Some('s') => n + (U5 { value: 16 }),
+                _ => {
+                    // Catch registers like $0
+                    match mnemonic.parse::<u8>() {
+                        Ok(v) => U5::new(v),
+                        // Hardcoded error
+                        Err(_) => U5::new(99),
+                    }
+                }
             };
-            if reg <= 31 {
-                Ok(reg)
-            } else {
-                Err("Register out of bounds")
+            match reg {
+                Ok(r) => Ok(r),
+                Err(_) => Err("Register out of bounds"),
             }
         }
     }
@@ -182,56 +189,63 @@ fn assemble_reg(mnemonic: &str) -> Result<u32, &'static str> {
 
 /// Assembles an R-type instruction
 fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> {
-    let mut rs: u32 = 0;
-    let mut rt: u32 = 0;
-    let mut rd: u32 = 0;
-    let mut shamt: u32 = 0;
+    let mut rs: U5;
+    let mut rt: U5;
+    let mut rd: U5;
+    let mut shamt: U5;
 
     match r_struct.form {
         RForm::RdRsRt => {
             rd = assemble_reg(r_args[1])?;
             rs = assemble_reg(r_args[2])?;
             rt = assemble_reg(r_args[3])?;
-            shamt = r_struct.shamt.into();
+            shamt = r_struct.shamt;
         }
         RForm::RdRtShamt => {
             rd = assemble_reg(r_args[1])?;
+            rs = U5 { value: 0 };
             rt = assemble_reg(r_args[2])?;
-            shamt = assemble_reg(r_args[3])?
+            shamt = match r_args[3].parse::<u8>() {
+                Ok(v) => match U5::new(v) {
+                    Ok(u) => u,
+                    Err(e) => return Err(e),
+                },
+                Err(_) => return Err("Failed to parse shamt"),
+            }
         }
         _ => return Err("Unexpected R_form"),
     };
 
-    let mut funct: u32 = r_struct.funct.into();
+    let mut funct: U6 = r_struct.funct;
 
     // Mask
-    rs &= 0b1_1111;
-    rt &= 0b1_1111;
-    rd &= 0b1_1111;
-    shamt &= 0b1_1111;
-    funct &= 0b11_1111;
+    rs &= U5 { value: 0b1_1111 };
+    rt &= U5 { value: 0b1_1111 };
+    rd &= U5 { value: 0b1_1111 };
+    shamt &= U5 { value: 0b1_1111 };
+    funct &= U6 { value: 0b11_1111 };
 
     // opcode : 31 - 26
     let mut result = 0x000000;
 
     // rs :     25 - 21
-    println!("rs: {}", rs);
-    result = (result << 6) | rs;
+    println!("rs: {}", rs.value);
+    result = (result << 6) | u32::from(rs);
 
     // rt :     20 - 16
-    println!("rt: {}", rt);
-    result = (result << 5) | rt;
+    println!("rt: {}", rt.value);
+    result = (result << 5) | u32::from(rt);
 
     // rd :     15 - 11
-    println!("rd: {}", rd);
-    result = (result << 5) | rd;
+    println!("rd: {}", rd.value);
+    result = (result << 5) | u32::from(rd);
 
     // shamt : 10 - 6
-    println!("shamt: {}", shamt);
-    result = (result << 5) | shamt;
+    println!("shamt: {}", shamt.value);
+    result = (result << 5) | u32::from(shamt);
 
     // funct : 5 - 0
-    result = (result << 6) | funct;
+    result = (result << 6) | u32::from(funct);
 
     println!(
         "0x{:0shortwidth$x} {:0width$b}",
@@ -245,40 +259,44 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
 
 /// Assembles an I-type instruction
 fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> {
-    let mut rs: u32 = 0;
-    let mut rt: u32 = 0;
-    let mut imm: u32 = 0;
+    let mut rs: U5;
+    let mut rt: U5;
+    let mut imm: u16;
 
     match i_struct.form {
         IForm::RtImm => {
+            rs = U5 { value: 0 };
             rt = assemble_reg(i_args[1])?;
-            imm = assemble_reg(i_args[2])?;
+            imm = match i_args[2].parse::<u16>() {
+                Ok(v) => v,
+                Err(_) => return Err("Failed to parse imm"),
+            }
         }
         _ => return Err("Unexpected I_form"),
     };
 
-    let mut opcode: u32 = i_struct.opcode.into();
+    let mut opcode: U6 = i_struct.opcode;
 
     // Mask
-    rs &= 0b1_1111;
-    rt &= 0b1_1111;
-    opcode &= 0b11_1111;
+    rs &= U5 { value: 0b1_1111 };
+    rt &= U5 { value: 0b1_1111 };
+    opcode &= U6 { value: 0b11_1111 };
     imm &= 0b1111_1111_1111_1111;
 
     // opcode : 31 - 26
-    let mut result = opcode;
+    let mut result: u32 = opcode.into();
 
     // rs :     25 - 21
-    println!("rs: {}", rs);
-    result = (result << 5) | rs;
+    println!("rs: {}", rs.value);
+    result = (result << 5) | u32::from(rs);
 
     // rt :     20 - 16
-    println!("rt: {}", rt);
-    result = (result << 5) | rt;
+    println!("rt: {}", rt.value);
+    result = (result << 5) | u32::from(rt);
 
     // imm :    15 - 0
     println!("imm: {}", imm);
-    result = (result << 16) | imm;
+    result = (result << 16) | u32::from(imm);
 
     println!(
         "0x{:0shortwidth$x} {:0width$b}",
@@ -295,19 +313,17 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     let input_fn = &args.input_as;
     let output_fn = &args.output_as;
 
-    let file_contents: String;
-    match fs::read_to_string(input_fn) {
-        Ok(v) => file_contents = v,
+    let file_contents: String = match fs::read_to_string(input_fn) {
+        Ok(v) => v,
         Err(_) => return Err("Failed to read input file contents"),
     };
 
     let mut tokens = tokenize(&file_contents);
 
-    let output_file: File;
-    match File::create(output_fn) {
-        Ok(v) => output_file = v,
-        Err(e) => return Err("Failed to open output file"),
-    }
+    let output_file: File = match File::create(output_fn) {
+        Ok(v) => v,
+        Err(_) => return Err("Failed to open output file"),
+    };
 
     let mut state = AssemblerState::Initial;
     let mut r_struct: R = R {
@@ -323,7 +339,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     let mut i_args: Vec<&str> = Vec::new();
 
     // Iterate over all tokens
-    while tokens.len() > 0 {
+    while !tokens.is_empty() {
         let token = tokens.remove(0);
 
         // Scan tokens in
@@ -332,7 +348,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 "main:" => state = AssemblerState::Scanning,
                 _ => return Err("Code must begin with 'main' label"),
             },
-            AssemblerState::Scanning => match r_operation(&token) {
+            AssemblerState::Scanning => match r_operation(token) {
                 Ok(instr_info) => {
                     state = AssemblerState::CollectingRArguments;
 
@@ -346,8 +362,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                     r_args.clear();
                     r_args.push(token)
                 }
-                _ => match i_operation(&token) {
-                    Ok(instr_info) => {
+                _ => if let Ok(instr_info) = i_operation(token) {
                         state = AssemblerState::CollectingIArguments;
 
                         println!("-----------------------------------");
@@ -355,14 +370,15 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
 
                         i_struct = instr_info;
                         i_args.clear();
-                        i_args.push(token)
+                        i_args.push(token);
                     }
-                    _ => (),
                 },
-            },
             AssemblerState::CollectingRArguments => {
                 let filtered_token = if token.ends_with(',') {
-                    &token[..token.len() - 1]
+                    match token.strip_suffix(',') {
+                        Some(s) => s,
+                        _ => "UNKNOWN_TOKEN"
+                    }
                 } else {
                     token
                 };
@@ -370,8 +386,11 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 r_args.push(filtered_token);
             }
             AssemblerState::CollectingIArguments => {
-                let filtered_token = if token.ends_with(',') {
-                    &token[..token.len() - 1]
+                let filtered_token = if token.ends_with(',') { 
+                    match token.strip_suffix(',') {
+                        Some(s) => s,
+                        _ => "UNKNOWN_TOKEN"
+                    }
                 } else {
                     token
                 };
@@ -386,7 +405,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 // "1 + " handles instruction mnemonic being included
                 if r_args.len() == 1 + R_EXPECTED_ARGS {
                     let assembled_r = assemble_r(&mut r_struct, r_args.clone())?;
-                    if let Err(_) = write_u32(&output_file, assembled_r) {
+                    if write_u32(&output_file, assembled_r).is_err() {
                         return Err("Failed to write to output binary");
                     }
 
@@ -397,7 +416,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 // "1 + " handles instruction mnemonic being included
                 if i_args.len() == 1 + I_EXPECTED_ARGS {
                     let assembled_i = assemble_i(&mut i_struct, i_args.clone())?;
-                    if let Err(_) = write_u32(&output_file, assembled_i) {
+                    if write_u32(&output_file, assembled_i).is_err() {
                         return Err("Failed to write to output binary");
                     }
 
