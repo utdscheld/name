@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+thiserror = "1.0.48"
+dap = "0.3.1-alpha1"
+base64 = "0.21.4"
+byteorder = "1.4.3"
