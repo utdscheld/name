@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
-use dap::events::StoppedEventBody;
+use dap::events::{StoppedEventBody, ExitedEventBody};
 use dap::responses::ReadMemoryResponse;
 use dap::types::StoppedEventReason;
 use thiserror::Error;
@@ -9,7 +9,7 @@ use thiserror::Error;
 use dap::prelude::*;
 
 mod mips;
-use mips::Mips;
+use mips::{Mips, ExecutionErrors};
 
 use base64::{Engine as _, engine::general_purpose};
 
@@ -198,6 +198,47 @@ fn main() -> DynResult<()> {
       );
   
       server.respond(rsp)?;
+    }
+    
+    Command::Next(_) => {
+      
+      let result = mips.step_one();
+      let stopped_event_body = match result {
+        Ok(()) | Err(ExecutionErrors::ProgramComplete) => {
+          StoppedEventBody {
+            reason: StoppedEventReason::Step,
+            description: None,
+            thread_id: None,
+            preserve_focus_hint: None,
+            text: None,
+            all_threads_stopped: None,
+            hit_breakpoint_ids: None
+          }
+        }
+        Err(execution_error) => {
+          StoppedEventBody {
+            reason: StoppedEventReason::Exception,
+            description: Some("Exception".to_owned()),
+            thread_id: None,
+            preserve_focus_hint: None,
+            text: Some(execution_error.to_string()),
+            all_threads_stopped: None,
+            hit_breakpoint_ids: None
+          }
+        }
+      };
+
+      let rsp = req.success(
+        ResponseBody::Next
+      );
+      server.respond(rsp)?;
+
+      if result == Err(ExecutionErrors::ProgramComplete) {
+        server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
+      }
+      else {
+        server.send_event(Event::Stopped(stopped_event_body))?;
+      }
     }
 
     _ => () //Err(Box::new(MyAdapterError::UnhandledCommandError))

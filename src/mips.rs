@@ -1,4 +1,5 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use std::fmt;
 use std::io::Cursor;
 
 pub const DOT_TEXT: u32 = 0x00400000;
@@ -17,15 +18,28 @@ pub(crate) struct Mips {
     pub memories: Vec<(Vec<u8>, u32, u32)>
 }
 
+#[derive(Debug)]
+#[derive(PartialEq, Copy, Clone)]
 pub(crate) enum ExecutionErrors {
     // The program attempted to access an address that was within a
     // valid range, but was outside the current allocation for that range.
     // This should be treated as a warning, and read out as zero.
     MemoryObviouslyUninitializedAccess,
     // The program attempted to read from an area for which no valid range existed.
-    MemoryUnknownAccess,
+    MemoryIllegalAccess,
 
+    // The program is done executing.
+    ProgramComplete
 }
+
+impl fmt::Display for ExecutionErrors {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+        // or, alternatively:
+        // fmt::Debug::fmt(self, f)
+    }
+}
+
 
 impl Default for Mips {
     fn default() -> Self {
@@ -172,7 +186,7 @@ impl Mips {
                 Err(ExecutionErrors::MemoryObviouslyUninitializedAccess)
             }
         }
-        else { Err(ExecutionErrors::MemoryUnknownAccess) }
+        else { Err(ExecutionErrors::MemoryIllegalAccess) }
     }
     pub fn read_h(&mut self, address: u32) -> Result<u16, ExecutionErrors> {
         let bytes = [self.read_b(address)?, self.read_b(address + 1)?];
@@ -191,7 +205,7 @@ impl Mips {
             memory[offset as usize] = value;
             Ok(())
         }
-        else { Err(ExecutionErrors::MemoryUnknownAccess) }
+        else { Err(ExecutionErrors::MemoryIllegalAccess) }
     }
     pub fn write_h(&mut self, address: u32, value: u16) -> Result<(), ExecutionErrors> {
         let mut bytes = vec![];
