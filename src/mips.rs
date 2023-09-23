@@ -85,6 +85,7 @@ enum Instructions {
 impl Mips {
 
     fn dispatch_r(&mut self, ins: Rtype) -> Result<(), ExecutionErrors> {
+
         match ins.funct {
             // Shift-left logical
             0x0 => {
@@ -276,9 +277,15 @@ impl Mips {
         self.pc += 1;
         let instruction = self.decode(opcode);
 
-        match instruction {
+        let ins_result = match instruction {
             Instructions::R(rtype) => self.dispatch_r(rtype),
             Instructions::I(itype) => self.dispatch_i(itype)
-        }
+        };
+
+        // The zero register is ALWAYS 0.
+        // If for any reason whatsoever it is not, fix it.
+        self.regs[0] = 0;
+
+        ins_result
     }
 }
