@@ -31,7 +31,9 @@ pub(crate) enum ExecutionErrors {
     // The program is done executing.
     ProgramComplete,
 
-    UndefinedInstruction
+    UndefinedInstruction,
+    // Can also refer to underflow
+    IntegerOverflow
 }
 
 impl fmt::Display for ExecutionErrors {
@@ -97,13 +99,19 @@ impl Mips {
             }
             // Add
             0x20 => {
-                self.regs[ins.rd] = self.regs[ins.rt] + self.regs[ins.rs];
-                //Todo- catch overflows
+                let result = self.regs[ins.rt].checked_add(self.regs[ins.rs]);
+                match result {
+                    Some(value) => {self.regs[ins.rd] = value;}
+                    None => {return Err(ExecutionErrors::IntegerOverflow);}
+                }
             }
             // Subtract
             0x22 => {
-                //Todo- catch overflows
-                self.regs[ins.rd] = self.regs[ins.rt] - self.regs[ins.rs];
+                let result = self.regs[ins.rt].checked_sub(self.regs[ins.rs]);
+                match result {
+                    Some(value) => {self.regs[ins.rd] = value;}
+                    None => {return Err(ExecutionErrors::IntegerOverflow);}
+                }
             }
             // Xor
             0x26 => {
