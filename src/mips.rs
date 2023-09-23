@@ -103,7 +103,7 @@ impl Mips {
             // Subtract
             0x22 => {
                 //Todo- catch overflows
-                self.regs[ins.rd] = self.regs[ins.rt] + self.regs[ins.rs];
+                self.regs[ins.rd] = self.regs[ins.rt] - self.regs[ins.rs];
             }
             // Xor
             0x26 => {
