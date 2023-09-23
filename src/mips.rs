@@ -6,12 +6,24 @@ pub const DOT_TEXT: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
 const LEN_TEXT_INITIAL: usize = 200;
 
+enum BranchDelays {
+    NotActive,
+    Set,
+    Ready
+}
+
 pub(crate) struct Mips {
     pub regs: [u32; 32],
     pub floats: [f32; 32],
     pub mult_hi: u32,
     pub mult_lo: u32,
     pub pc: usize,
+
+    // Branch delay slots are implemented by filling this buffer with the
+    // branch target, which will be triggered after the following instruction
+    branch_delay_target: u32,
+    branch_delay_status: BranchDelays,
+    
 
     // A list of vectors of memory pools, their base addresses, and their
     // maximum lengths.
@@ -53,6 +65,8 @@ impl Default for Mips {
             mult_hi: 0,
             mult_lo: 0,
             pc: 0x00400000,
+            branch_delay_target: 0,
+            branch_delay_status: BranchDelays::NotActive,
             memories: vec![
                 (Vec::with_capacity(LEN_TEXT_INITIAL), DOT_TEXT, DOT_TEXT_MAX_LENGTH)   
             ]
@@ -75,13 +89,19 @@ struct Itype {
     imm: u16
 }
 
+struct Jtype {
+    opcode: u32,
+    dest: u32
+}
+
 // struct Jtype
 // struct Ftype
 
 enum Instructions {
     R(Rtype),
     I(Itype),
-    //J and F type
+    J(Jtype)
+    //F type
 }
 
 impl Mips {
@@ -176,9 +196,46 @@ impl Mips {
             0x2b | 0x38 => {
                 self.write_w(memory_address, self.regs[ins.rt])?;
             }
+            // Branch if Equal
+            0x4 => {
+                if self.regs[ins.rt] == self.regs[ins.rs] {
+                    self.branch_delay_target = (ins.imm as u32) << 2;
+                    self.branch_delay_status = BranchDelays::Set;
+                }
+            }
+            // Branch if Not Equal
+            0x5 => {
+                if self.regs[ins.rt] != self.regs[ins.rs] {
+                    self.branch_delay_target = (ins.imm as u32) << 2;
+                    self.branch_delay_status = BranchDelays::Set;
+                }
+            }
+            
 
             _ => return Err(ExecutionErrors::UndefinedInstruction)
         }
+        Ok(())
+    }
+    fn dispatch_j(&mut self, ins: Jtype) -> Result<(), ExecutionErrors> {
+        // This instruction type takes the top nybble of PC and combines it with
+        // a 28-bit range (26 bits as encoded shifted left twice.)
+        // Thus, you can jump to anywhere in a 256MB address space.
+        match ins.opcode {
+            // Jump absolute
+            2 => {
+                self.branch_delay_status = BranchDelays::Set;
+                self.branch_delay_target = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+            }
+            // Jump And Link
+            3 => {
+                self.branch_delay_status = BranchDelays::Set;
+                self.branch_delay_target = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+                // $ra = register 31
+                self.regs[31] = self.pc as u32 + 8;
+            }
+            _ => return Err(ExecutionErrors::UndefinedInstruction)
+        }
+
         Ok(())
     }
 
@@ -198,11 +255,13 @@ impl Mips {
                 })
             }
             // J-type
-            // 0x2 | 0x3 => {
-            //     Instructions::Jtype(Jtype {
-
-            //     })
-            // }
+            0x2 | 0x3 => {
+                Instructions::J(Jtype {
+                    opcode: opcode,
+                    // Lower 26 bits of the instruction
+                    dest: instruction & 0b11111111111111111111111111
+                })
+            }
             // I-type
             _ => {
                 Instructions::I(Itype {
@@ -287,12 +346,25 @@ impl Mips {
 
         let ins_result = match instruction {
             Instructions::R(rtype) => self.dispatch_r(rtype),
-            Instructions::I(itype) => self.dispatch_i(itype)
+            Instructions::I(itype) => self.dispatch_i(itype),
+            Instructions::J(jtype) => self.dispatch_j(jtype)
         };
 
         // The zero register is ALWAYS 0.
-        // If for any reason whatsoever it is not, fix it.
+        // If an instruction wrote to the zero register, discard that result here.
         self.regs[0] = 0;
+
+        // Branch delay slots are handled here. On the instruction the branch is set,
+        // it is not triggered, and instead the state shifts such that after the end of
+        // the next instruction the control flow transfer is triggered.
+        match self.branch_delay_status {
+            BranchDelays::NotActive => (),
+            BranchDelays::Set => self.branch_delay_status = BranchDelays::Ready,
+            BranchDelays::Ready => {
+                self.pc = self.branch_delay_target as usize;
+                self.branch_delay_status = BranchDelays::NotActive;
+            }
+        }
 
         ins_result
     }
