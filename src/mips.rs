@@ -183,7 +183,7 @@ impl Mips {
     }
 
     fn decode(&self, instruction: u32) -> Instructions {
-        let opcode = instruction >> 26 & 0b11111;
+        let opcode = instruction >> 25 & 0b111111;
         match opcode {
             // R-type
             0 => {
