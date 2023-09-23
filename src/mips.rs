@@ -29,7 +29,9 @@ pub(crate) enum ExecutionErrors {
     MemoryIllegalAccess,
 
     // The program is done executing.
-    ProgramComplete
+    ProgramComplete,
+
+    UndefinedInstruction
 }
 
 impl fmt::Display for ExecutionErrors {
@@ -106,11 +108,14 @@ impl Mips {
             0x26 => {
                 self.regs[ins.rd] = self.regs[ins.rt] ^ self.regs[ins.rs];
             }
-            _ => panic!("R-Type unimplemented instruction")
+            _ => return Err(ExecutionErrors::UndefinedInstruction)
         }
         Ok(())
     }
     fn dispatch_i(&mut self, ins: Itype) -> Result<(), ExecutionErrors> {
+
+        let memory_address = (ins.rt as i64 + (ins.imm as i64)) as u32;
+
         match ins.opcode {
             // Or Immediate
             0xD => {
@@ -121,7 +126,49 @@ impl Mips {
             0xF => {
                 self.regs[ins.rt] = (ins.imm as u32) << 16;
             }
-            _ => panic!("I-type unimplemented instruction")
+            // Load word (0x23) and Load Linked (0x30).
+            // A word on Load Linked-- This is an instruction for atomic accesses
+            // across SMP processors. NAME does not implement SMP, so this is equal to
+            // Load word.
+            0x23 | 0x30 =>{
+                self.regs[ins.rt] = self.read_w(memory_address)?;
+            }
+            // Load byte unsigned
+            // Note that "as u32" WILL zero extend
+            0x24 =>{
+                self.regs[ins.rt] = self.read_b(memory_address)? as u32;
+            }
+            // Load halfword unsigned
+            // Note that "as u32" WILL zero extend
+            0x25 => {
+                self.regs[ins.rt] = self.read_h(memory_address)? as u32;
+            }
+            // Load byte (signed)
+            // Note that I force a sign extension through a convuluted series of casts
+            // u8 -> i8 (same bits) -> i32 (more bits, sign extension) -> u32 (same bits)
+            0x20 => {
+                self.regs[ins.rt] = self.read_b(memory_address)? as i8 as i32 as u32;
+            }
+            // Load halfword (signed), same deal
+            0x21 => {
+                self.regs[ins.rt] = self.read_h(memory_address)? as i16 as i32 as u32;
+            }
+            // Store byte
+            0x28 => {
+                self.write_b(memory_address, self.regs[ins.rt] as u8)?;
+            }
+            // Store halfword
+            0x29 => {
+                self.write_h(memory_address, self.regs[ins.rt] as u16)?;
+            }
+            // Store word (0x2b) and Store Conditional (0x38).
+            // Store Conditional is the second half of Load Linked, and it's an equivalent
+            // op for the same reason.
+            0x2b | 0x38 => {
+                self.write_w(memory_address, self.regs[ins.rt])?;
+            }
+
+            _ => return Err(ExecutionErrors::UndefinedInstruction)
         }
         Ok(())
     }
