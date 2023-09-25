@@ -2,7 +2,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::fmt;
 use std::io::Cursor;
 
-pub const DOT_TEXT: u32 = 0x00400000;
+pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
 const LEN_TEXT_INITIAL: usize = 200;
 
@@ -68,7 +68,7 @@ impl Default for Mips {
             branch_delay_target: 0,
             branch_delay_status: BranchDelays::NotActive,
             memories: vec![
-                (Vec::with_capacity(LEN_TEXT_INITIAL), DOT_TEXT, DOT_TEXT_MAX_LENGTH)   
+                (Vec::with_capacity(LEN_TEXT_INITIAL), DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
             ]
         }
     }
@@ -257,7 +257,7 @@ impl Mips {
             // J-type
             0x2 | 0x3 => {
                 Instructions::J(Jtype {
-                    opcode: opcode,
+                    opcode,
                     // Lower 26 bits of the instruction
                     dest: instruction & 0b11111111111111111111111111
                 })
@@ -291,7 +291,7 @@ impl Mips {
         None
     }
 
-    // This function attempts to access memory and returns an error if that memory doesn't exist
+    // This function attempts to access a byte of memory and returns an error if that memory doesn't exist
     pub fn read_b(&mut self, address: u32) -> Result<u8, ExecutionErrors> {
         if let Some((memory, offset)) = self.map_memory(address) {
             if let Some(value) = memory.get(offset as usize) {
@@ -303,10 +303,12 @@ impl Mips {
         }
         else { Err(ExecutionErrors::MemoryIllegalAccess) }
     }
+    // Reads two bytes and returns a halfword
     pub fn read_h(&mut self, address: u32) -> Result<u16, ExecutionErrors> {
         let bytes = [self.read_b(address)?, self.read_b(address + 1)?];
         Ok(Cursor::new(bytes).read_u16::<LittleEndian>().unwrap())
     }
+    // Reads four bytes and returns a word
     pub fn read_w(&mut self, address: u32) -> Result<u32, ExecutionErrors> {
         let bytes = [self.read_b(address)?, self.read_b(address + 1)?,
                         self.read_b(address + 2)?, self.read_b(address + 3)?];
@@ -314,7 +316,7 @@ impl Mips {
     }
 
     
-    // I'm clueless on how to expand this. I need to talk to Cole
+    // I'm clueless on how to expand this. I need to talk to Cole. Writes one byte
     pub fn write_b(&mut self, address: u32, value: u8) -> Result<(), ExecutionErrors> {
         if let Some((memory, offset)) = self.map_memory(address) {
             memory[offset as usize] = value;
@@ -322,6 +324,7 @@ impl Mips {
         }
         else { Err(ExecutionErrors::MemoryIllegalAccess) }
     }
+    // Writes a halfword in little endian form
     pub fn write_h(&mut self, address: u32, value: u16) -> Result<(), ExecutionErrors> {
         let mut bytes = vec![];
         bytes.write_u16::<LittleEndian>(value).unwrap();
@@ -329,6 +332,7 @@ impl Mips {
         self.write_b(address, bytes[1])?;
         Ok(())
     }
+    // Writes a word in little endian form
     pub fn write_w(&mut self, address: u32, value: u32) -> Result<(), ExecutionErrors> {
         let mut bytes = vec![];
         bytes.write_u32::<LittleEndian>(value).unwrap();
