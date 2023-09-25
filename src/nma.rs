@@ -169,18 +169,18 @@ fn assemble_reg(mnemonic: &str) -> Result<u8, &'static str> {
         _ => {
             let n = reg_number(mnemonic)?;
             let reg = match mnemonic.chars().nth(1) {
-                Some('v') => n + (2),
-                Some('a') => n + (4),
+                Some('v') => n + 2,
+                Some('a') => n + 4,
                 Some('t') => {
                     if n <= 7 {
-                        n + (8)
+                        n + 8
                     } else {
                         // t8, t9 = 24, 25
                         // 24 - 8 + n
-                        n + (16)
+                        n + 16
                     }
                 }
-                Some('s') => n + (16),
+                Some('s') => n + 16,
                 _ => {
                     // Catch registers like $0
                     mnemonic.parse::<u8>().unwrap_or(99)
