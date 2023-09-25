@@ -1,0 +1,13 @@
+C:\Users\haley\Documents\code\GitHub\NAME\target\debug\deps\toml-3120d61f6d297b5e.rmeta: C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\lib.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\map.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\value.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\de.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\ser.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\macros.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\edit.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\fmt.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\table.rs
+
+C:\Users\haley\Documents\code\GitHub\NAME\target\debug\deps\toml-3120d61f6d297b5e.d: C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\lib.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\map.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\value.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\de.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\ser.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\macros.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\edit.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\fmt.rs C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\table.rs
+
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\lib.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\map.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\value.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\de.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\ser.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\macros.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\edit.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\fmt.rs:
+C:\Users\haley\.cargo\registry\src\index.crates.io-6f17d22bba15001f\toml-0.7.8\src\table.rs:
