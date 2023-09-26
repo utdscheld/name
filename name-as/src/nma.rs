@@ -23,7 +23,6 @@ const R_EXPECTED_ARGS: usize = 3;
 enum RForm {
     None,
     RdRsRt,
-    // Rs,
     RdRtShamt,
 }
 
@@ -42,6 +41,9 @@ const I_EXPECTED_ARGS: usize = 2;
 enum IForm {
     None,
     RtImm,
+    RtImmRs,
+    RtRsImm,
+    RsRtImm,
 }
 
 /// The variable components of an I-type instruction
@@ -85,9 +87,61 @@ pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
 /// Parses an I-type instruction mnemonic into an [I]
 pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
     match mnemonic {
+        "ori" => Ok(I {
+            opcode: 0xd,
+            form: IForm::RtRsImm
+        }),
+        "lb" => Ok(I {
+            opcode: 0x20,
+            form: IForm::RtImmRs
+        }),
+        "lbu" => Ok(I {
+            opcode: 0x24,
+            form: IForm::RtImmRs
+        }),
+        "lh" => Ok(I {
+            opcode: 0x21,
+            form: IForm::RtImmRs
+        }),
+        "lhu" => Ok(I {
+            opcode: 0x25,
+            form: IForm::RtImmRs
+        }),
+        "lw" => Ok(I {
+            opcode: 0x23,
+            form: IForm::RtImmRs
+        }),
+        "ll" => Ok(I {
+            opcode: 0x30,
+            form: IForm::RtImmRs
+        }),
         "lui" => Ok(I {
             opcode: 0xf,
             form: IForm::RtImm,
+        }),
+        "sb" => Ok(I {
+            opcode: 0x28,
+            form: IForm::RtImmRs
+        }),
+        "sh" => Ok(I {
+            opcode: 0x29,
+            form: IForm::RtImmRs
+        }),
+        "sw" => Ok(I {
+            opcode: 0x2b,
+            form: IForm::RtImmRs
+        }),
+        "sc" => Ok(I {
+            opcode: 0x38,
+            form: IForm::RtImmRs
+        }),
+        "beq" => Ok(I {
+            opcode: 0x4,
+            form: IForm::RsRtImm
+        }),
+        "bne" => Ok(I {
+            opcode: 0x5,
+            form: IForm::RsRtImm
         }),
         _ => Err("Failed to match I-instr mnemonic"),
     }
@@ -191,6 +245,14 @@ fn assemble_reg(mnemonic: &str) -> Result<u8, &'static str> {
     }
 }
 
+fn enforce_length(arr : &Vec<&str>, len : usize) -> Result<u32, &'static str> {
+    if arr.len() != len {
+        Err("Failed length enforcement")
+    } else {
+        Ok(0)
+    }
+}
+
 /// Assembles an R-type instruction
 fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> {
     let mut rs: u8;
@@ -200,12 +262,14 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
 
     match r_struct.form {
         RForm::RdRsRt => {
+            enforce_length(&r_args, 4)?;
             rd = assemble_reg(r_args[1])?;
             rs = assemble_reg(r_args[2])?;
             rt = assemble_reg(r_args[3])?;
             shamt = r_struct.shamt;
         }
         RForm::RdRtShamt => {
+            enforce_length(&r_args, 4)?;
             rd = assemble_reg(r_args[1])?;
             rs = 0;
             rt = assemble_reg(r_args[2])?;
@@ -266,12 +330,41 @@ fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> 
 
     match i_struct.form {
         IForm::RtImm => {
+            enforce_length(&i_args, 3)?;
             rs = 0;
             rt = assemble_reg(i_args[1])?;
             imm = match i_args[2].parse::<u16>() {
                 Ok(v) => v,
                 Err(_) => return Err("Failed to parse imm"),
             }
+        },
+        IForm::RtImmRs => {
+            enforce_length(&i_args, 4)?;
+            rt = assemble_reg(i_args[1])?;
+            imm = match i_args[2].parse::<u16>() {
+                Ok(v) => v,
+                Err(_) => return Err("Failed to parse imm"),
+            };
+            rs = assemble_reg(i_args[3])?
+        },
+        IForm::RsRtImm => {
+            enforce_length(&i_args, 4)?;
+            rs = assemble_reg(i_args[1])?;
+            rt = assemble_reg(i_args[2])?;
+            imm = match i_args[3].parse::<u16>() {
+                Ok(v) => v,
+                Err(_) => return Err("Failed to parse imm"),
+            };
+        },
+        IForm::RtRsImm => {
+            enforce_length(&i_args, 4)?;
+            // println!("{:?}", i_args);
+            rt = assemble_reg(i_args[1])?;
+            rs = assemble_reg(i_args[2])?;
+            imm = match i_args[3].parse::<u16>() {
+                Ok(v) => v,
+                Err(_) => return Err("Failed to parse imm"),
+            };
         }
         _ => return Err("Unexpected I_form"),
     };
@@ -406,25 +499,27 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
         // Try to assemble if args collected
         match state {
             AssemblerState::CollectingRArguments => {
-                // "1 + " handles instruction mnemonic being included
-                if r_args.len() == 1 + R_EXPECTED_ARGS {
-                    let assembled_r = assemble_r(&mut r_struct, r_args.clone())?;
-                    if write_u32(&output_file, assembled_r).is_err() {
-                        return Err("Failed to write to output binary");
-                    }
-
-                    state = AssemblerState::Scanning;
+                match assemble_r(&mut r_struct, r_args.clone()) {
+                    Ok(assembled_r) => {
+                        if write_u32(&output_file, assembled_r).is_err() {
+                            return Err("Failed to write to output binary");
+                        }
+    
+                        state = AssemblerState::Scanning;
+                    },
+                    Err(_) => continue
                 }
             }
             AssemblerState::CollectingIArguments => {
-                // "1 + " handles instruction mnemonic being included
-                if i_args.len() == 1 + I_EXPECTED_ARGS {
-                    let assembled_i = assemble_i(&mut i_struct, i_args.clone())?;
-                    if write_u32(&output_file, assembled_i).is_err() {
-                        return Err("Failed to write to output binary");
-                    }
-
-                    state = AssemblerState::Scanning;
+                match assemble_i(&mut i_struct, i_args.clone()) {
+                    Ok(assembled_i) => {
+                        if write_u32(&output_file, assembled_i).is_err() {
+                            return Err("Failed to write to output binary");
+                        }
+    
+                        state = AssemblerState::Scanning;
+                    },
+                    Err(_) => continue
                 }
             }
             _ => (),
