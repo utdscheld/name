@@ -2,4 +2,5 @@ out
 dist
 node_modules/
 .vscode-test/
+name-emu/target/debug
 *.vsix
