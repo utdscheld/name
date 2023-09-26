@@ -2,5 +2,6 @@ out
 dist
 node_modules/
 .vscode-test/
-name-emu/target/debug
+name-emu/target
+name-emu/Cargo.lock
 *.vsix
