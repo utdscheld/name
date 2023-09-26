@@ -8,3 +8,5 @@ main:
    ori $t0, $t1, 50
    lb  $t0, 50, $t1
    beq $s0, $s0, 100
+   j   1984
+   jal 1969

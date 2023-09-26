@@ -15,9 +15,6 @@ where
     n & bitmask
 }
 
-/// Number of expected arguments for R-type instructions
-const R_EXPECTED_ARGS: usize = 3;
-
 /// The form of an R-type instruction, specificially
 /// which arguments it expects in which order
 enum RForm {
@@ -33,9 +30,6 @@ pub struct R {
     form: RForm,
 }
 
-/// Number of expected arguments for I-type instructions
-const I_EXPECTED_ARGS: usize = 2;
-
 /// The form of an I-type instruction, specifically
 /// which arguments it expects in which order
 enum IForm {
@@ -50,6 +44,11 @@ enum IForm {
 pub struct I {
     opcode: u8,
     form: IForm,
+}
+
+/// The variable component of a J-type instruction
+pub struct J {
+    opcode: u8
 }
 
 /// Parses an R-type instruction mnemonic into an [R]
@@ -147,6 +146,19 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
     }
 }
 
+/// Parses a J-type instruction mnemonic into a [J]
+fn j_operation(mnemonic: &str) -> Result<J, &'static str> {
+    match mnemonic {
+        "j" => Ok(J {
+            opcode: 0x2
+        }),
+        "jal" => Ok(J {
+            opcode: 0x3
+        }),
+        _ => Err("Failed to match J-instr mnemonic")
+    }
+}
+
 /// Split a string into meaningful, atomic elements of the MIPS language
 pub fn tokenize(raw_text: &str) -> Vec<&str> {
     // raw_text.split_whitespace().collect::<Vec<&str>>()
@@ -186,6 +198,9 @@ enum AssemblerState {
     /// The assembler has encountered an I-type instruction and
     /// is collecting its arguments before assembling
     CollectingIArguments,
+    /// The assembler has encountered a J-type instruction and
+    /// is collecting its arguments before assembling
+    CollectingJArguments
 }
 
 /// Converts a numbered mnemonic ($t0, $s8, etc) or literal (55, 67, etc) to its integer representation
@@ -405,6 +420,39 @@ fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> 
     Ok(result)
 }
 
+/// Assembles a J-type instruction
+fn assemble_j(j_struct: &mut J, j_args: Vec<&str>) -> Result<u32, &'static str> {
+    enforce_length(&j_args, 2)?;
+
+    let imm: u16 = match j_args[1].parse::<u16>() {
+        Ok(v) => v,
+        Err(_) => return Err("Failed to parse imm"),
+    };
+
+    let mut opcode = j_struct.opcode;
+
+    // Mask
+    println!("Masking opcode");
+    opcode = mask(opcode, 6);
+    // No need to mask imm, it's already a u16
+
+    // opcode : 31 - 26
+    let mut result: u32 = opcode.into();
+
+    // imm :    25 - 0
+    println!("imm: {}", imm);
+    result = (result << 26) | u32::from(imm);
+
+    println!(
+        "0x{:0shortwidth$x} {:0width$b}",
+        result,
+        result,
+        shortwidth = 8,
+        width = 32
+    );
+    Ok(result)
+}
+
 // General assembler entrypoint
 pub fn assemble(args: &Args) -> Result<(), &'static str> {
     let input_fn = &args.input_as;
@@ -428,12 +476,14 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
         funct: 0,
         form: RForm::None,
     };
-    let mut r_args: Vec<&str> = Vec::new();
     let mut i_struct: I = I {
         opcode: 0,
         form: IForm::None,
     };
-    let mut i_args: Vec<&str> = Vec::new();
+    let mut j_struct: J = J {
+        opcode: 0
+    };
+    let mut args: Vec<&str> = Vec::new();
 
     // Iterate over all tokens
     while !tokens.is_empty() {
@@ -445,8 +495,8 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 "main:" => state = AssemblerState::Scanning,
                 _ => return Err("Code must begin with 'main' label"),
             },
-            AssemblerState::Scanning => match r_operation(token) {
-                Ok(instr_info) => {
+            AssemblerState::Scanning => match (r_operation(token), i_operation(token), j_operation(token)) {
+                (Ok(instr_info), _, _) => {
                     state = AssemblerState::CollectingRArguments;
 
                     println!("-----------------------------------");
@@ -456,21 +506,35 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                     );
 
                     r_struct = instr_info;
-                    r_args.clear();
-                    r_args.push(token)
-                }
-                _ => if let Ok(instr_info) = i_operation(token) {
-                        state = AssemblerState::CollectingIArguments;
-
-                        println!("-----------------------------------");
-                        println!("[I] {} - opcode [{:x}]", token, instr_info.opcode);
-
-                        i_struct = instr_info;
-                        i_args.clear();
-                        i_args.push(token);
-                    }
+                    args.clear();
+                    args.push(token)
                 },
-            AssemblerState::CollectingRArguments => {
+                (_, Ok(instr_info), _) => {
+                    state = AssemblerState::CollectingIArguments;
+
+                    println!("-----------------------------------");
+                    println!("[I] {} - opcode [{:x}]", token, instr_info.opcode);
+
+                    i_struct = instr_info;
+                    args.clear();
+                    args.push(token);
+                },
+                (_, _, Ok(instr_info)) => {
+                    state = AssemblerState::CollectingJArguments;
+
+                    println!("-----------------------------------");
+                    println!("[J] {} - opcode [{:x}]", token, instr_info.opcode);
+
+                    j_struct = instr_info;
+                    args.clear();
+                    args.push(token);
+                },
+                _ => return Err("Failed to parse mnemonic")
+            }
+            
+            | AssemblerState::CollectingRArguments
+            | AssemblerState::CollectingIArguments
+            | AssemblerState::CollectingJArguments => {
                 let filtered_token = if token.ends_with(',') {
                     match token.strip_suffix(',') {
                         Some(s) => s,
@@ -480,26 +544,14 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                     token
                 };
                 // Filter out comma
-                r_args.push(filtered_token);
-            }
-            AssemblerState::CollectingIArguments => {
-                let filtered_token = if token.ends_with(',') { 
-                    match token.strip_suffix(',') {
-                        Some(s) => s,
-                        _ => "UNKNOWN_TOKEN"
-                    }
-                } else {
-                    token
-                };
-                // Filter out comma
-                i_args.push(filtered_token);
+                args.push(filtered_token);
             }
         }
 
         // Try to assemble if args collected
         match state {
             AssemblerState::CollectingRArguments => {
-                match assemble_r(&mut r_struct, r_args.clone()) {
+                match assemble_r(&mut r_struct, args.clone()) {
                     Ok(assembled_r) => {
                         if write_u32(&output_file, assembled_r).is_err() {
                             return Err("Failed to write to output binary");
@@ -511,9 +563,21 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 }
             }
             AssemblerState::CollectingIArguments => {
-                match assemble_i(&mut i_struct, i_args.clone()) {
+                match assemble_i(&mut i_struct, args.clone()) {
                     Ok(assembled_i) => {
                         if write_u32(&output_file, assembled_i).is_err() {
+                            return Err("Failed to write to output binary");
+                        }
+    
+                        state = AssemblerState::Scanning;
+                    },
+                    Err(_) => continue
+                }
+            }
+            AssemblerState::CollectingJArguments => {
+                match assemble_j(&mut j_struct, args.clone()) {
+                    Ok(assembled_j) => {
+                        if write_u32(&output_file, assembled_j).is_err() {
                             return Err("Failed to write to output binary");
                         }
     
