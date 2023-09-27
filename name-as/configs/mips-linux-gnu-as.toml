@@ -1,5 +1,6 @@
 config_name = "Assemble with mips-linux-gnu-as"
-as_cmd = """
-mips-linux-gnu-as {INPUT_AS} -o a.o && \
-mips-linux-gnu-objcopy -O binary --only-section=.text a.o {OUTPUT_AS} && \
-rm a.o"""
+as_cmd = [
+    "mips-linux-gnu-as {INPUT_AS} -o a.o -mips32r6",
+    "mips-linux-gnu-objcopy -O binary --only-section=.text a.o {OUTPUT_AS}",
+    "rm a.o"
+]
