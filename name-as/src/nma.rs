@@ -21,7 +21,6 @@ const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 /// The form of an R-type instruction, specificially
 /// which arguments it expects in which order
 enum RForm {
-    None,
     RdRsRt,
     RdRtShamt,
 }
@@ -36,7 +35,6 @@ pub struct R {
 /// The form of an I-type instruction, specifically
 /// which arguments it expects in which order
 enum IForm {
-    None,
     RtImm,
     RtImmRs,
     RtRsImm,
@@ -160,13 +158,20 @@ fn j_operation(mnemonic: &str) -> Result<J, &'static str> {
 
 /// Write a u32 into a file, zero-padded to 32 bits (4 bytes)
 pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
+    fn convert_endianness(input: u32) -> u32 {
+        ((input & 0x000000FF) << 24)
+            | ((input & 0x0000FF00) << 8)
+            | ((input & 0x00FF0000) >> 8)
+            | ((input & 0xFF000000) >> 24)
+    }
+
     const PADDED_LENGTH: usize = 4;
 
     // Create a 4-length buffer
     let mut padded_buffer: [u8; PADDED_LENGTH] = [0; PADDED_LENGTH];
 
     // Convert data into bytes
-    let bytes: [u8; PADDED_LENGTH] = data.to_be_bytes();
+    let bytes: [u8; PADDED_LENGTH] = (convert_endianness(data)).to_be_bytes();
 
     // Copy bytes into buffer at offset s.t. value is left-padded with 0s
     let copy_index = PADDED_LENGTH - bytes.len();
@@ -236,6 +241,7 @@ fn assemble_reg(mnemonic: &str) -> Result<u8, &'static str> {
     }
 }
 
+/// Enforce a specific length for a given vector
 fn enforce_length(arr: &Vec<&str>, len: usize) -> Result<u32, &'static str> {
     if arr.len() != len {
         Err("Failed length enforcement")
@@ -269,7 +275,6 @@ fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
                 Err(_) => return Err("Failed to parse shamt"),
             }
         }
-        _ => return Err("Unexpected R_form"),
     };
 
     let mut funct = r_struct.funct;
@@ -348,7 +353,8 @@ fn assemble_i(
             rs = assemble_reg(i_args[0])?;
             rt = assemble_reg(i_args[1])?;
             match labels.get(i_args[2]) {
-                Some(v) => imm = ((*v) - instr_address) as u16,
+                // Subtract byte width due to branch delay
+                Some(v) => imm = ((*v) - instr_address - MIPS_INSTR_BYTE_WIDTH) as u16,
                 None => return Err("Undeclared label"),
             }
         }
@@ -361,7 +367,6 @@ fn assemble_i(
                 Err(_) => return Err("Failed to parse imm"),
             };
         }
-        _ => return Err("Unexpected I_form"),
     };
 
     let mut opcode = i_struct.opcode;
@@ -502,57 +507,52 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     for sub_cst in vernac_sequence {
         match sub_cst {
             MipsCST::Instruction(mnemonic, args) => {
-                match (
-                    r_operation(mnemonic),
-                    i_operation(mnemonic),
-                    j_operation(mnemonic),
-                ) {
-                    (Ok(instr_info), _, _) => {
-                        println!("-----------------------------------");
-                        println!(
-                            "[R] {} - shamt [{:x}] - funct [{:x}]",
-                            mnemonic, instr_info.shamt, instr_info.funct
-                        );
-                        match assemble_r(instr_info, args) {
-                            Ok(assembled_r) => {
-                                if write_u32(&output_file, assembled_r).is_err() {
-                                    return Err("Failed to write to output binary");
-                                }
+                if let Ok(instr_info) = r_operation(mnemonic) {
+                    println!("-----------------------------------");
+                    println!(
+                        "[R] {} - shamt [{:x}] - funct [{:x}]",
+                        mnemonic, instr_info.shamt, instr_info.funct
+                    );
+                    match assemble_r(instr_info, args) {
+                        Ok(assembled_r) => {
+                            if write_u32(&output_file, assembled_r).is_err() {
+                                return Err("Failed to write to output binary");
                             }
-                            Err(e) => return Err(e),
                         }
+                        Err(e) => return Err(e),
                     }
-                    (_, Ok(instr_info), _) => {
-                        println!("-----------------------------------");
-                        println!("[I] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
+                } else if let Ok(instr_info) = i_operation(mnemonic) {
+                    println!("-----------------------------------");
+                    println!("[I] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
 
-                        match assemble_i(instr_info, args, &labels, current_addr) {
-                            Ok(assembled_i) => {
-                                if write_u32(&output_file, assembled_i).is_err() {
-                                    return Err("Failed to write to output binary");
-                                }
+                    match assemble_i(instr_info, args, &labels, current_addr) {
+                        Ok(assembled_i) => {
+                            if write_u32(&output_file, assembled_i).is_err() {
+                                return Err("Failed to write to output binary");
                             }
-                            Err(e) => return Err(e),
                         }
+                        Err(e) => return Err(e),
                     }
-                    (_, _, Ok(instr_info)) => {
-                        println!("-----------------------------------");
-                        println!("[J] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
+                } else if let Ok(instr_info) = j_operation(mnemonic) {
+                    println!("-----------------------------------");
+                    println!("[J] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
 
-                        match assemble_j(instr_info, args, &labels) {
-                            Ok(assembled_j) => {
-                                if write_u32(&output_file, assembled_j).is_err() {
-                                    return Err("Failed to write to output binary");
-                                }
+                    match assemble_j(instr_info, args, &labels) {
+                        Ok(assembled_j) => {
+                            if write_u32(&output_file, assembled_j).is_err() {
+                                return Err("Failed to write to output binary");
                             }
-                            Err(e) => return Err(e),
                         }
+                        Err(e) => return Err(e),
                     }
-                    (_, _, _) => continue,
+                } else {
+                    return Err("Failed to match instruction");
                 }
             }
             _ => continue,
-        }
+        };
+
+        current_addr += MIPS_INSTR_BYTE_WIDTH;
     }
 
     Ok(())
