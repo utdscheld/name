@@ -8,3 +8,6 @@ name-emu/Cargo.lock
 *.vsix
 .vscode/*
 target/*
+Cargo.lock
+package-lock.json
+.eslistrc.json
