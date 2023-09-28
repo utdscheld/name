@@ -1,1 +1,0 @@
-# vsname extension

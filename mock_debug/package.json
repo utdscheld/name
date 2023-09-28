@@ -48,7 +48,7 @@
     "@types/vscode": "^1.66.0",
     "@typescript-eslint/eslint-plugin": "^5.17.0",
     "@typescript-eslint/parser": "^5.17.0",
-    "@vscode/debugadapter": "^1.63.0",
+    "@vscode/debugadapter": "^1.56.0",
     "@vscode/debugadapter-testsupport": "^1.56.0",
     "await-notify": "^1.0.1",
     "base64-js": "^1.5.1",
@@ -136,7 +136,7 @@
           "markdown"
         ],
         "label": "Mock Debug",
-        "program": "C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu\\target\\release\\name.exe",
+        "program": "./out/debugAdapter.js",
         "runtime": "node",
         "configurationAttributes": {
           "launch": {
@@ -239,8 +239,5 @@
         }
       }
     ]
-  },
-  "dependencies": {
-    "@vscode/debugprotocol": "^1.63.0"
   }
 }
