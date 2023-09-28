@@ -7,12 +7,11 @@ use std::io::Write;
 use std::str;
 
 use std::ops::BitAnd;
-use std::ops::Sub;
 fn mask<T>(n: T, x: u32) -> T
 where
-    T: BitAnd<Output = T> + Sub<Output = T> + From<u8> + Copy,
+    T: BitAnd<Output = T> + From<u8> + Copy,
 {
-    let bitmask = T::from(1 << x) - T::from(1);
+    let bitmask = T::from((1 << x) - 1);
     n & bitmask
 }
 
@@ -353,7 +352,8 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
 fn assemble_i(
     i_struct: &mut I,
     i_args: Vec<&str>,
-    labels: &mut HashMap<&str, u16>,
+    labels: &mut HashMap<&str, u32>,
+    instr_address: u32,
 ) -> Result<u32, &'static str> {
     let mut rs: u8;
     let mut rt: u8;
@@ -391,7 +391,7 @@ fn assemble_i(
             rs = assemble_reg(i_args[1])?;
             rt = assemble_reg(i_args[2])?;
             match labels.get(i_args[3]) {
-                Some(v) => imm = *v,
+                Some(v) => imm = ((*v) - instr_address) as u16,
                 None => return Err("Undeclared label"),
             }
             // imm = match i_args[3].parse::<u16>() {
@@ -457,14 +457,17 @@ fn assemble_i(
 fn assemble_j(
     j_struct: &mut J,
     j_args: Vec<&str>,
-    labels: &mut HashMap<&str, u16>,
+    labels: &mut HashMap<&str, u32>,
 ) -> Result<u32, &'static str> {
     enforce_length(&j_args, 2)?;
 
-    let imm: u16 = match j_args[1].parse::<u16>() {
-        Ok(v) => v,
-        Err(_) => return Err("Failed to parse imm"),
-    };
+    let jump_address: u32 = labels[j_args[1]];
+    println!("Masking jump address");
+    println!("{}", jump_address & ((1 << 26) - 1));
+    let masked_jump_address = mask(jump_address, 26);
+    if jump_address != masked_jump_address {
+        panic!("Tried to assemble illegal jump address");
+    }
 
     let mut opcode = j_struct.opcode;
 
@@ -477,8 +480,8 @@ fn assemble_j(
     let mut result: u32 = opcode.into();
 
     // imm :    25 - 0
-    println!("imm: {}", imm);
-    result = (result << 26) | u32::from(imm);
+    println!("imm: {}", masked_jump_address);
+    result = (result << 26) | masked_jump_address;
 
     println!(
         "0x{:0shortwidth$x} {:0width$b}",
@@ -507,6 +510,23 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
         Err(_) => return Err("Failed to read input file contents"),
     };
 
+    // Parse labels (TODO : Make more robust later)
+    let mut current_addr: u32 = MIPS_TEXT_ADDRESS;
+    let mut labels: HashMap<&str, u32> = HashMap::new();
+    for line in file_contents.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Ok(label_str) = label(line.trim()) {
+            labels.insert(label_str, current_addr);
+            continue;
+        }
+
+        current_addr += MIPS_INSTR_WIDTH;
+    }
+    current_addr = MIPS_TEXT_ADDRESS;
+
     // Tokenize input
     let mut tokens = tokenize(&file_contents);
 
@@ -523,9 +543,6 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     };
     let mut j_struct: J = J { opcode: 0 };
     let mut args: Vec<&str> = Vec::new();
-
-    let mut current_addr: u32 = MIPS_TEXT_ADDRESS;
-    let mut labels: HashMap<&str, u16> = HashMap::new();
 
     // Iterate over all tokens
     while !tokens.is_empty() {
@@ -545,7 +562,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                     j_operation(token),
                 ) {
                     (Ok(label_str), _, _, _) => {
-                        labels.insert(label_str, current_addr as u16);
+                        println!("Found label {} at address {}", label_str, labels[label_str]);
                         continue;
                     }
                     (_, Ok(instr_info), _, _) => {
@@ -612,7 +629,12 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 Err(_) => continue,
             },
             AssemblerState::CollectingIArguments => {
-                match assemble_i(&mut i_struct, args.clone(), &mut labels.clone()) {
+                match assemble_i(
+                    &mut i_struct,
+                    args.clone(),
+                    &mut labels.clone(),
+                    current_addr,
+                ) {
                     Ok(assembled_i) => {
                         if write_u32(&output_file, assembled_i).is_err() {
                             return Err("Failed to write to output binary");
@@ -634,7 +656,9 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                         state = AssemblerState::Scanning;
                         args.clear();
                     }
-                    Err(_) => continue,
+                    Err(_) => {
+                        continue;
+                    }
                 }
             }
             _ => (),
@@ -646,6 +670,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     if args.is_empty() {
         Ok(())
     } else {
+        println!("Args: {:?}", args);
         Err("Unterminated parsing, likely due to uncaught syntax error")
     }
 }
