@@ -27,19 +27,29 @@ fn main() -> Result<(), &'static str> {
         println!("Config Name:   {}", config.config_name);
         println!("Assembler CMD: {:?}", config.as_cmd);
 
-        for cmd in &config.as_cmd {
-            match Command::new("sh").arg("-c").arg(cmd.as_str()).output() {
+        for full_cmd in &config.as_cmd {
+            let split_cmd: Vec<&str> = full_cmd.split_whitespace().collect();
+
+            match Command::new(split_cmd[0]).args(&split_cmd[1..]).output() {
                 Ok(output) => {
                     if output.status.success() {
                         if !&output.stdout.is_empty() {
-                            println!("CMD {}\n{}", cmd, String::from_utf8_lossy(&output.stdout));
+                            println!(
+                                "CMD {}\n{}",
+                                full_cmd,
+                                String::from_utf8_lossy(&output.stdout)
+                            );
                         }
                     } else if !&output.stderr.is_empty() {
-                        eprintln!("CMD {}\n{}", cmd, String::from_utf8_lossy(&output.stderr));
+                        eprintln!(
+                            "CMD {}\n{}",
+                            full_cmd,
+                            String::from_utf8_lossy(&output.stderr)
+                        );
                     }
                 }
                 Err(err) => {
-                    eprintln!("Error: {}", err);
+                    eprintln!("CMD {}\nError: {}", full_cmd, err);
                     return Err("Failed to run assembler command");
                 }
             }
