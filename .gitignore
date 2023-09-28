@@ -4,4 +4,5 @@ node_modules/
 .vscode-test/
 name-emu/target
 name-emu/Cargo.lock
+.obsidian
 *.vsix
