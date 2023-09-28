@@ -6,22 +6,31 @@ BUILD_DIR := $(PROJECT_DIR)/target/debug
 # Cargo command
 CARGO := cargo
 
-build:
-	$(CARGO) build
-
 CONFIG := configs/default.toml
+GNUCFG := configs/mips-linux-gnu-as.toml
 INPUT := .artifacts/mips_test.asm
 OUTPUT := output.o
-
-run:
-	$(CARGO) run $(CONFIG) $(INPUT) $(OUTPUT)
 
 fmt:
 	$(CARGO) fmt
 
+build: fmt
+	$(CARGO) build
+
+run: build
+	$(CARGO) run $(CONFIG) $(INPUT) $(OUTPUT)
+
+run-gnu: build
+	$(CARGO) run $(GNUCFG) $(INPUT) $(OUTPUT)
+
+test: run
+	$(CARGO) run $(GNUCFG) $(INPUT) gnu-$(OUTPUT)
+	md5sum $(OUTPUT) gnu-$(OUTPUT)
+
 clean:
 	$(CARGO) clean
 	rm -f $(BUILD_DIR)/$(BINARY_NAME)
+
 
 # Set the default rule to build and run the program
 .PHONY: default

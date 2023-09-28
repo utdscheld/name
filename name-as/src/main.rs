@@ -5,11 +5,11 @@ pub mod nma;
 
 use args::parse_args;
 use nma::assemble;
+use std::process::Command;
 
 fn main() -> Result<(), &'static str> {
     // Parse command line arguments and the config file
     let cmd_args = parse_args()?;
-    
 
     let config: config::Config = match config::parse_config(&cmd_args) {
         Ok(v) => v,
@@ -25,7 +25,25 @@ fn main() -> Result<(), &'static str> {
     } else {
         // Otherwise, use provided assembler command
         println!("Config Name:   {}", config.config_name);
-        println!("Assembler CMD: {}", config.as_cmd);
+        println!("Assembler CMD: {:?}", config.as_cmd);
+
+        for cmd in &config.as_cmd {
+            match Command::new("sh").arg("-c").arg(cmd.as_str()).output() {
+                Ok(output) => {
+                    if output.status.success() {
+                        if !&output.stdout.is_empty() {
+                            println!("CMD {}\n{}", cmd, String::from_utf8_lossy(&output.stdout));
+                        }
+                    } else if !&output.stderr.is_empty() {
+                        eprintln!("CMD {}\n{}", cmd, String::from_utf8_lossy(&output.stderr));
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Error: {}", err);
+                    return Err("Failed to run assembler command");
+                }
+            }
+        }
     }
 
     Ok(())
