@@ -6,17 +6,16 @@ use std::fs::File;
 use std::io::Write;
 use std::str;
 
-use std::ops::BitAnd;
-fn mask<T>(n: T, x: u32) -> T
-where
-    T: BitAnd<Output = T> + From<u8> + Copy,
-{
-    let bitmask = T::from((1 << x) - 1);
-    n & bitmask
+fn mask_u8(n: u8, x: u8) -> u8 {
+    n & ((1 << x) - 1)
+}
+
+fn mask_u32(n: u32, x: u8) -> u32 {
+    n & ((1 << x) - 1)
 }
 
 const MIPS_TEXT_ADDRESS: u32 = 0x00400000;
-const MIPS_INSTR_WIDTH: u32 = 32;
+const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 
 /// The form of an R-type instruction, specificially
 /// which arguments it expects in which order
@@ -310,11 +309,11 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
     let mut funct = r_struct.funct;
 
     // Mask
-    rs = mask(rs, 5);
-    rt &= mask(rt, 5);
-    rd &= mask(rd, 5);
-    shamt &= mask(shamt, 5);
-    funct &= mask(funct, 6);
+    rs = mask_u8(rs, 5);
+    rt &= mask_u8(rt, 5);
+    rd &= mask_u8(rd, 5);
+    shamt &= mask_u8(shamt, 5);
+    funct &= mask_u8(funct, 6);
 
     // opcode : 31 - 26
     let mut result = 0x000000;
@@ -421,11 +420,11 @@ fn assemble_i(
 
     // Mask
     println!("Masking rs");
-    rs = mask(rs, 5);
+    rs = mask_u8(rs, 5);
     println!("Masking rt");
-    rt = mask(rt, 5);
+    rt = mask_u8(rt, 5);
     println!("Masking opcode");
-    opcode = mask(opcode, 6);
+    opcode = mask_u8(opcode, 6);
     // No need to mask imm, it's already a u16
 
     // opcode : 31 - 26
@@ -463,17 +462,21 @@ fn assemble_j(
 
     let jump_address: u32 = labels[j_args[1]];
     println!("Masking jump address");
-    println!("{}", jump_address & ((1 << 26) - 1));
-    let masked_jump_address = mask(jump_address, 26);
+    println!("Jump address original: {}", jump_address);
+    let mut masked_jump_address = mask_u32(jump_address, 26);
+    println!("Jump address masked: {}", masked_jump_address);
     if jump_address != masked_jump_address {
         panic!("Tried to assemble illegal jump address");
     }
+
+    // Byte-align jump address
+    masked_jump_address >>= 2;
 
     let mut opcode = j_struct.opcode;
 
     // Mask
     println!("Masking opcode");
-    opcode = mask(opcode, 6);
+    opcode = mask_u8(opcode, 6);
     // No need to mask imm, it's already a u16
 
     // opcode : 31 - 26
@@ -519,11 +522,12 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
         }
 
         if let Ok(label_str) = label(line.trim()) {
+            println!("Inserting label {} at {:x}", label_str, current_addr);
             labels.insert(label_str, current_addr);
             continue;
         }
 
-        current_addr += MIPS_INSTR_WIDTH;
+        current_addr += MIPS_INSTR_BYTE_WIDTH;
     }
     current_addr = MIPS_TEXT_ADDRESS;
 
@@ -664,7 +668,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
             _ => (),
         };
 
-        current_addr += MIPS_INSTR_WIDTH;
+        current_addr += MIPS_INSTR_BYTE_WIDTH;
     }
 
     if args.is_empty() {
