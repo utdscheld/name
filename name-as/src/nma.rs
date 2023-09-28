@@ -1,5 +1,6 @@
 /// NAME Mips Assembler
 use crate::args::Args;
+use crate::parser::print_ast;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -486,9 +487,11 @@ fn assemble_j(
     Ok(result)
 }
 
+use crate::parser::MipsAST;
 use crate::parser::MipsParser;
 use crate::parser::Rule;
 use pest::Parser;
+use pest::Token;
 
 // General assembler entrypoint
 pub fn assemble(args: &Args) -> Result<(), &'static str> {
@@ -507,23 +510,46 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
         Err(_) => return Err("Failed to read input file contents"),
     };
 
-    let pairs = MipsParser::parse(Rule::vernaculars, file_contents.as_str())
-        .unwrap_or_else(|e| panic!("{}", e));
+    let pair = MipsParser::parse(Rule::vernacular, file_contents.as_str())
+        .expect("Failed to parse")
+        .next()
+        .unwrap();
 
-    for pair in pairs {
-        // A pair is a combination of the rule which matched and a span of input
-        println!("Rule:    {:?}", pair.as_rule());
-        println!("Span:    {:?}", pair.as_span());
-        println!("Text:    {}", pair.as_str());
+    use pest::iterators::Pair;
 
-        // A pair can be converted to an iterator of the tokens which make it up:
-        for inner_pair in pair.into_inner() {
-            match inner_pair.as_rule() {
-                Rule::vernacular => println!("Vernacular:   {}", inner_pair.as_str()),
-                _ => unreachable!(),
-            };
+    fn parse_rule(pair: Pair<Rule>) -> MipsAST {
+        match pair.as_rule() {
+            Rule::vernacular => MipsAST::Sequence(pair.into_inner().map(parse_rule).collect()),
+            Rule::label => MipsAST::Label(pair.into_inner().next().unwrap().as_str()),
+            Rule::instruction => {
+                let mut inner = pair.into_inner();
+                let opcode = inner.next().unwrap().as_str();
+                let args = inner.clone().map(|p| p.as_str()).collect::<Vec<&str>>();
+                MipsAST::Instruction(opcode, args)
+            }
+            _ => {
+                println!("Unreachable: {:?}", pair.as_rule());
+                unreachable!()
+            }
         }
     }
+
+    print_ast(parse_rule(pair));
+
+    // for pair in pairs {
+    //     // A pair is a combination of the rule which matched and a span of input
+    //     println!("Rule:    {:?}", pair.as_rule());
+    //     println!("Span:    {:?}", pair.as_span());
+    //     println!("Text:    {}", pair.as_str());
+
+    //     // A pair can be converted to an iterator of the tokens which make it up:
+    //     for inner_pair in pair.into_inner() {
+    //         match inner_pair.as_rule() {
+    //             Rule::vernacular => println!("Vernacular:   {}", inner_pair.as_str()),
+    //             _ => unreachable!(),
+    //         };
+    //     }
+    // }
 
     Ok(())
 
