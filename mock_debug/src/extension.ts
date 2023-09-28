@@ -1,12 +1,22 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
-//import * as dap from '@vscode/debugadapter';
-import { HelloWorldPanel } from './HelloWorldPanel';
-//import { spawn } from "child_process";
-//import path = require('path');
+/*---------------------------------------------------------
+ * Copyright (C) Microsoft Corporation. All rights reserved.
+ *--------------------------------------------------------*/
+/*
+ * extension.ts (and activateMockDebug.ts) forms the "plugin" that plugs into VS Code and contains the code that
+ * connects VS Code with the debug adapter.
+ * 
+ * extension.ts contains code for launching the debug adapter in three different ways:
+ * - as an external program communicating with VS Code via stdin/stdout,
+ * - as a server process communicating with VS Code via sockets or named pipes, or
+ * - as inlined code running in the extension itself (default).
+ * 
+ * Since the code in extension.ts uses node.js APIs it cannot run in the browser.
+ */
+
+'use strict';
 
 import * as Net from 'net';
+import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -15,12 +25,13 @@ import { ProviderResult } from 'vscode';
 import { MockDebugSession } from './mockDebug';
 import { activateMockDebug, workspaceFileAccessor } from './activateMockDebug';
 
+/*
+ * The compile time flag 'runMode' controls how the debug adapter is run.
+ * Please note: the test suite only supports 'external' mode.
+ */
 const runMode: 'external' | 'server' | 'namedPipeServer' | 'inline' = 'inline';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	console.log('Congratulations, your extension "testinghi" is now active!');
 
 	// debug adapters can be run in different ways by using a vscode.DebugAdapterDescriptorFactory:
 	switch (runMode) {
@@ -44,18 +55,11 @@ export function activate(context: vscode.ExtensionContext) {
 			activateMockDebug(context);
 			break;
 	}
-
-	console.log("I got here too!");
-
-	context.subscriptions.push(
-		vscode.commands.registerCommand("vsname2.helloWorld", () => {
-			HelloWorldPanel.createOrShow(context.extensionUri);
-		})
-	);
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+	// nothing to do
+}
 
 class DebugAdapterExecutableFactory implements vscode.DebugAdapterDescriptorFactory {
 
