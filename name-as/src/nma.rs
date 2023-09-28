@@ -14,7 +14,7 @@ fn mask_u32(n: u32, x: u8) -> u32 {
     n & ((1 << x) - 1)
 }
 
-const TEXT_ADDRESS_BASE: u32 = 0;
+const TEXT_ADDRESS_BASE: u32 = 0x400000;
 const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 
 /// The form of an R-type instruction, specificially
