@@ -8,13 +8,13 @@ use std::fs;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub config_name: String,
-    pub as_cmd: String,
+    pub as_cmd: Vec<String>,
 }
 
 pub fn backup_config() -> Config {
     Config {
         config_name: "backup config".to_string(),
-        as_cmd: "".to_string(),
+        as_cmd: ["".to_string()].to_vec(),
     }
 }
 

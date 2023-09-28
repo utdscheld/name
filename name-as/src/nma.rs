@@ -1,19 +1,21 @@
 /// NAME Mips Assembler
 use crate::args::Args;
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::str;
 
-use std::ops::BitAnd;
-use std::ops::Sub;
-fn mask<T>(n: T, x: u32) -> T
-where
-    T: BitAnd<Output = T> + Sub<Output = T> + From<u8> + Copy,
-{
-    let bitmask = T::from(1 << x) - T::from(1);
-    n & bitmask
+fn mask_u8(n: u8, x: u8) -> u8 {
+    n & ((1 << x) - 1)
 }
+
+fn mask_u32(n: u32, x: u8) -> u32 {
+    n & ((1 << x) - 1)
+}
+
+const MIPS_TEXT_ADDRESS: u32 = 0x00400000;
+const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 
 /// The form of an R-type instruction, specificially
 /// which arguments it expects in which order
@@ -37,7 +39,7 @@ enum IForm {
     RtImm,
     RtImmRs,
     RtRsImm,
-    RsRtImm,
+    RsRtLabel,
 }
 
 /// The variable components of an I-type instruction
@@ -48,7 +50,15 @@ pub struct I {
 
 /// The variable component of a J-type instruction
 pub struct J {
-    opcode: u8
+    opcode: u8,
+}
+
+/// Parses a label
+pub fn label(token: &str) -> Result<&str, &'static str> {
+    match token.strip_suffix(':') {
+        Some(s) => Ok(s),
+        None => Err("Not label"),
+    }
 }
 
 /// Parses an R-type instruction mnemonic into an [R]
@@ -88,31 +98,31 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
     match mnemonic {
         "ori" => Ok(I {
             opcode: 0xd,
-            form: IForm::RtRsImm
+            form: IForm::RtRsImm,
         }),
         "lb" => Ok(I {
             opcode: 0x20,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "lbu" => Ok(I {
             opcode: 0x24,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "lh" => Ok(I {
             opcode: 0x21,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "lhu" => Ok(I {
             opcode: 0x25,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "lw" => Ok(I {
             opcode: 0x23,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "ll" => Ok(I {
             opcode: 0x30,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "lui" => Ok(I {
             opcode: 0xf,
@@ -120,27 +130,27 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
         }),
         "sb" => Ok(I {
             opcode: 0x28,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "sh" => Ok(I {
             opcode: 0x29,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "sw" => Ok(I {
             opcode: 0x2b,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "sc" => Ok(I {
             opcode: 0x38,
-            form: IForm::RtImmRs
+            form: IForm::RtImmRs,
         }),
         "beq" => Ok(I {
             opcode: 0x4,
-            form: IForm::RsRtImm
+            form: IForm::RsRtLabel,
         }),
         "bne" => Ok(I {
             opcode: 0x5,
-            form: IForm::RsRtImm
+            form: IForm::RsRtLabel,
         }),
         _ => Err("Failed to match I-instr mnemonic"),
     }
@@ -149,20 +159,17 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
 /// Parses a J-type instruction mnemonic into a [J]
 fn j_operation(mnemonic: &str) -> Result<J, &'static str> {
     match mnemonic {
-        "j" => Ok(J {
-            opcode: 0x2
-        }),
-        "jal" => Ok(J {
-            opcode: 0x3
-        }),
-        _ => Err("Failed to match J-instr mnemonic")
+        "j" => Ok(J { opcode: 0x2 }),
+        "jal" => Ok(J { opcode: 0x3 }),
+        _ => Err("Failed to match J-instr mnemonic"),
     }
 }
 
 /// Split a string into meaningful, atomic elements of the MIPS language
 pub fn tokenize(raw_text: &str) -> Vec<&str> {
     // raw_text.split_whitespace().collect::<Vec<&str>>()
-    raw_text.split(&[',', ' ', '\t', '\r', '\n'][..])
+    raw_text
+        .split(&[',', ' ', '\t', '\r', '\n'][..])
         .filter(|&s| !s.is_empty())
         .collect::<Vec<&str>>()
 }
@@ -200,13 +207,12 @@ enum AssemblerState {
     CollectingIArguments,
     /// The assembler has encountered a J-type instruction and
     /// is collecting its arguments before assembling
-    CollectingJArguments
+    CollectingJArguments,
 }
 
 /// Converts a numbered mnemonic ($t0, $s8, etc) or literal (55, 67, etc) to its integer representation
 fn reg_number(mnemonic: &str) -> Result<u8, &'static str> {
     if mnemonic.len() != 3 {
-        println!("{}", mnemonic);
         return Err("Mnemonic out of bounds");
     }
 
@@ -255,12 +261,16 @@ fn assemble_reg(mnemonic: &str) -> Result<u8, &'static str> {
                     mnemonic.parse::<u8>().unwrap_or(99)
                 }
             };
-            if reg <= 31 { Ok(reg) } else { Err("Register out of bounds") }
+            if reg <= 31 {
+                Ok(reg)
+            } else {
+                Err("Register out of bounds")
+            }
         }
     }
 }
 
-fn enforce_length(arr : &Vec<&str>, len : usize) -> Result<u32, &'static str> {
+fn enforce_length(arr: &Vec<&str>, len: usize) -> Result<u32, &'static str> {
     if arr.len() != len {
         Err("Failed length enforcement")
     } else {
@@ -299,11 +309,11 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
     let mut funct = r_struct.funct;
 
     // Mask
-    rs = mask(rs, 5);
-    rt &= mask(rt, 5);
-    rd &= mask(rd, 5);
-    shamt &= mask(shamt, 5);
-    funct &= mask(funct, 6);
+    rs = mask_u8(rs, 5);
+    rt &= mask_u8(rt, 5);
+    rd &= mask_u8(rd, 5);
+    shamt &= mask_u8(shamt, 5);
+    funct &= mask_u8(funct, 6);
 
     // opcode : 31 - 26
     let mut result = 0x000000;
@@ -338,7 +348,12 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
 }
 
 /// Assembles an I-type instruction
-fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> {
+fn assemble_i(
+    i_struct: &mut I,
+    i_args: Vec<&str>,
+    labels: &mut HashMap<&str, u32>,
+    instr_address: u32,
+) -> Result<u32, &'static str> {
     let mut rs: u8;
     let mut rt: u8;
     let mut imm: u16;
@@ -352,28 +367,45 @@ fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> 
                 Ok(v) => v,
                 Err(_) => return Err("Failed to parse imm"),
             }
-        },
+        }
         IForm::RtImmRs => {
-            enforce_length(&i_args, 4)?;
+            enforce_length(&i_args, 3)?;
             rt = assemble_reg(i_args[1])?;
-            imm = match i_args[2].parse::<u16>() {
-                Ok(v) => v,
-                Err(_) => return Err("Failed to parse imm"),
-            };
-            rs = assemble_reg(i_args[3])?
-        },
-        IForm::RsRtImm => {
+
+            if let (Some(rs_index), Some(rs_end)) = (i_args[2].find('('), i_args[2].find(')')) {
+                let imm_string = &i_args[2][..rs_index];
+                let rs_string = &i_args[2][rs_index + 1..rs_end];
+
+                imm = match imm_string.parse::<u16>() {
+                    Ok(v) => v,
+                    Err(_) => return Err("Failed to parse imm"),
+                };
+                rs = assemble_reg(rs_string)?
+            } else {
+                return Err("Expected operands of the form \"Rt, Imm(Rs)\"");
+            }
+        }
+        IForm::RsRtLabel => {
             enforce_length(&i_args, 4)?;
             rs = assemble_reg(i_args[1])?;
             rt = assemble_reg(i_args[2])?;
-            imm = match i_args[3].parse::<u16>() {
-                Ok(v) => v,
-                Err(_) => return Err("Failed to parse imm"),
-            };
-        },
+            match labels.get(i_args[3]) {
+                Some(v) => imm = ((*v) - instr_address) as u16,
+                None => return Err("Undeclared label"),
+            }
+            // imm = match i_args[3].parse::<u16>() {
+            //     Ok(v) => {
+            //         if v % 4 != 0 {
+            //             return Err("Branch position must be word-aligned");
+            //         } else {
+            //             v / 4
+            //         }
+            //     }
+            //     Err(_) => return Err("Failed to parse imm"),
+            // };
+        }
         IForm::RtRsImm => {
             enforce_length(&i_args, 4)?;
-            // println!("{:?}", i_args);
             rt = assemble_reg(i_args[1])?;
             rs = assemble_reg(i_args[2])?;
             imm = match i_args[3].parse::<u16>() {
@@ -388,11 +420,11 @@ fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> 
 
     // Mask
     println!("Masking rs");
-    rs = mask(rs, 5);
+    rs = mask_u8(rs, 5);
     println!("Masking rt");
-    rt = mask(rt, 5);
+    rt = mask_u8(rt, 5);
     println!("Masking opcode");
-    opcode = mask(opcode, 6);
+    opcode = mask_u8(opcode, 6);
     // No need to mask imm, it's already a u16
 
     // opcode : 31 - 26
@@ -421,27 +453,38 @@ fn assemble_i(i_struct: &mut I, i_args: Vec<&str>) -> Result<u32, &'static str> 
 }
 
 /// Assembles a J-type instruction
-fn assemble_j(j_struct: &mut J, j_args: Vec<&str>) -> Result<u32, &'static str> {
+fn assemble_j(
+    j_struct: &mut J,
+    j_args: Vec<&str>,
+    labels: &mut HashMap<&str, u32>,
+) -> Result<u32, &'static str> {
     enforce_length(&j_args, 2)?;
 
-    let imm: u16 = match j_args[1].parse::<u16>() {
-        Ok(v) => v,
-        Err(_) => return Err("Failed to parse imm"),
-    };
+    let jump_address: u32 = labels[j_args[1]];
+    println!("Masking jump address");
+    println!("Jump address original: {}", jump_address);
+    let mut masked_jump_address = mask_u32(jump_address, 26);
+    println!("Jump address masked: {}", masked_jump_address);
+    if jump_address != masked_jump_address {
+        panic!("Tried to assemble illegal jump address");
+    }
+
+    // Byte-align jump address
+    masked_jump_address >>= 2;
 
     let mut opcode = j_struct.opcode;
 
     // Mask
     println!("Masking opcode");
-    opcode = mask(opcode, 6);
+    opcode = mask_u8(opcode, 6);
     // No need to mask imm, it's already a u16
 
     // opcode : 31 - 26
     let mut result: u32 = opcode.into();
 
     // imm :    25 - 0
-    println!("imm: {}", imm);
-    result = (result << 26) | u32::from(imm);
+    println!("imm: {}", masked_jump_address);
+    result = (result << 26) | masked_jump_address;
 
     println!(
         "0x{:0shortwidth$x} {:0width$b}",
@@ -455,21 +498,43 @@ fn assemble_j(j_struct: &mut J, j_args: Vec<&str>) -> Result<u32, &'static str> 
 
 // General assembler entrypoint
 pub fn assemble(args: &Args) -> Result<(), &'static str> {
+    // IO Setup
     let input_fn = &args.input_as;
     let output_fn = &args.output_as;
-
-    let file_contents: String = match fs::read_to_string(input_fn) {
-        Ok(v) => v,
-        Err(_) => return Err("Failed to read input file contents"),
-    };
-
-    let mut tokens = tokenize(&file_contents);
 
     let output_file: File = match File::create(output_fn) {
         Ok(v) => v,
         Err(_) => return Err("Failed to open output file"),
     };
 
+    // Read input
+    let file_contents: String = match fs::read_to_string(input_fn) {
+        Ok(v) => v,
+        Err(_) => return Err("Failed to read input file contents"),
+    };
+
+    // Parse labels (TODO : Make more robust later)
+    let mut current_addr: u32 = MIPS_TEXT_ADDRESS;
+    let mut labels: HashMap<&str, u32> = HashMap::new();
+    for line in file_contents.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Ok(label_str) = label(line.trim()) {
+            println!("Inserting label {} at {:x}", label_str, current_addr);
+            labels.insert(label_str, current_addr);
+            continue;
+        }
+
+        current_addr += MIPS_INSTR_BYTE_WIDTH;
+    }
+    current_addr = MIPS_TEXT_ADDRESS;
+
+    // Tokenize input
+    let mut tokens = tokenize(&file_contents);
+
+    // Assembler setup
     let mut state = AssemblerState::Initial;
     let mut r_struct: R = R {
         shamt: 0,
@@ -480,9 +545,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
         opcode: 0,
         form: IForm::None,
     };
-    let mut j_struct: J = J {
-        opcode: 0
-    };
+    let mut j_struct: J = J { opcode: 0 };
     let mut args: Vec<&str> = Vec::new();
 
     // Iterate over all tokens
@@ -495,50 +558,58 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                 "main:" => state = AssemblerState::Scanning,
                 _ => return Err("Code must begin with 'main' label"),
             },
-            AssemblerState::Scanning => match (r_operation(token), i_operation(token), j_operation(token)) {
-                (Ok(instr_info), _, _) => {
-                    state = AssemblerState::CollectingRArguments;
+            AssemblerState::Scanning => {
+                match (
+                    label(token),
+                    r_operation(token),
+                    i_operation(token),
+                    j_operation(token),
+                ) {
+                    (Ok(label_str), _, _, _) => {
+                        println!("Found label {} at address {}", label_str, labels[label_str]);
+                        continue;
+                    }
+                    (_, Ok(instr_info), _, _) => {
+                        state = AssemblerState::CollectingRArguments;
 
-                    println!("-----------------------------------");
-                    println!(
-                        "[R] {} - shamt [{:x}] - funct [{:x}]",
-                        token, instr_info.shamt, instr_info.funct
-                    );
+                        println!("-----------------------------------");
+                        println!(
+                            "[R] {} - shamt [{:x}] - funct [{:x}]",
+                            token, instr_info.shamt, instr_info.funct
+                        );
 
-                    r_struct = instr_info;
-                    args.clear();
-                    args.push(token)
-                },
-                (_, Ok(instr_info), _) => {
-                    state = AssemblerState::CollectingIArguments;
+                        r_struct = instr_info;
+                        args.push(token)
+                    }
+                    (_, _, Ok(instr_info), _) => {
+                        state = AssemblerState::CollectingIArguments;
 
-                    println!("-----------------------------------");
-                    println!("[I] {} - opcode [{:x}]", token, instr_info.opcode);
+                        println!("-----------------------------------");
+                        println!("[I] {} - opcode [{:x}]", token, instr_info.opcode);
 
-                    i_struct = instr_info;
-                    args.clear();
-                    args.push(token);
-                },
-                (_, _, Ok(instr_info)) => {
-                    state = AssemblerState::CollectingJArguments;
+                        i_struct = instr_info;
+                        args.push(token);
+                    }
+                    (_, _, _, Ok(instr_info)) => {
+                        state = AssemblerState::CollectingJArguments;
 
-                    println!("-----------------------------------");
-                    println!("[J] {} - opcode [{:x}]", token, instr_info.opcode);
+                        println!("-----------------------------------");
+                        println!("[J] {} - opcode [{:x}]", token, instr_info.opcode);
 
-                    j_struct = instr_info;
-                    args.clear();
-                    args.push(token);
-                },
-                _ => return Err("Failed to parse mnemonic")
+                        j_struct = instr_info;
+                        args.push(token);
+                    }
+                    _ => return Err("Failed to parse mnemonic"),
+                }
             }
-            
-            | AssemblerState::CollectingRArguments
+
+            AssemblerState::CollectingRArguments
             | AssemblerState::CollectingIArguments
             | AssemblerState::CollectingJArguments => {
                 let filtered_token = if token.ends_with(',') {
                     match token.strip_suffix(',') {
                         Some(s) => s,
-                        _ => "UNKNOWN_TOKEN"
+                        _ => "UNKNOWN_TOKEN",
                     }
                 } else {
                     token
@@ -550,45 +621,60 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
 
         // Try to assemble if args collected
         match state {
-            AssemblerState::CollectingRArguments => {
-                match assemble_r(&mut r_struct, args.clone()) {
-                    Ok(assembled_r) => {
-                        if write_u32(&output_file, assembled_r).is_err() {
-                            return Err("Failed to write to output binary");
-                        }
-    
-                        state = AssemblerState::Scanning;
-                    },
-                    Err(_) => continue
+            AssemblerState::CollectingRArguments => match assemble_r(&mut r_struct, args.clone()) {
+                Ok(assembled_r) => {
+                    if write_u32(&output_file, assembled_r).is_err() {
+                        return Err("Failed to write to output binary");
+                    }
+
+                    state = AssemblerState::Scanning;
+                    args.clear();
                 }
-            }
+                Err(_) => continue,
+            },
             AssemblerState::CollectingIArguments => {
-                match assemble_i(&mut i_struct, args.clone()) {
+                match assemble_i(
+                    &mut i_struct,
+                    args.clone(),
+                    &mut labels.clone(),
+                    current_addr,
+                ) {
                     Ok(assembled_i) => {
                         if write_u32(&output_file, assembled_i).is_err() {
                             return Err("Failed to write to output binary");
                         }
-    
+
                         state = AssemblerState::Scanning;
-                    },
-                    Err(_) => continue
+                        args.clear();
+                    }
+                    Err(_) => continue,
                 }
             }
             AssemblerState::CollectingJArguments => {
-                match assemble_j(&mut j_struct, args.clone()) {
+                match assemble_j(&mut j_struct, args.clone(), &mut labels.clone()) {
                     Ok(assembled_j) => {
                         if write_u32(&output_file, assembled_j).is_err() {
                             return Err("Failed to write to output binary");
                         }
-    
+
                         state = AssemblerState::Scanning;
-                    },
-                    Err(_) => continue
+                        args.clear();
+                    }
+                    Err(_) => {
+                        continue;
+                    }
                 }
             }
             _ => (),
         };
+
+        current_addr += MIPS_INSTR_BYTE_WIDTH;
     }
 
-    Ok(())
+    if args.is_empty() {
+        Ok(())
+    } else {
+        println!("Args: {:?}", args);
+        Err("Unterminated parsing, likely due to uncaught syntax error")
+    }
 }
