@@ -17,6 +17,59 @@
         "command": "vsname2.helloWorld",
         "title": "Hello World"
       }
+    ],
+    "debuggers": [
+      {
+        "type": "name",
+        "label": "NAME Debug",
+
+        "program": "./name-emu/target/release/name.exe",
+
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to a text file.",
+                "default": "${workspaceFolder}/${command:AskForProgramName}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop after launch.",
+                "default": true
+              }
+            }
+          }
+        },
+
+        "initialConfigurations": [
+          {
+            "type": "name",
+            "request": "launch",
+            "name": "Ask for file name",
+            "program": "${workspaceFolder}/${command:AskForProgramName}",
+            "stopOnEntry": true
+          }
+        ],
+
+        "configurationSnippets": [
+          {
+            "label": "NAME Debug: Launch",
+            "description": "A new configuration for launching a NAME debug program",
+            "body": {
+              "type": "name",
+              "request": "launch",
+              "name": "${2:Launch Program}",
+              "program": "^\"\\${workspaceFolder}/${1:Program}\""
+            }
+          }
+        ],
+
+        "variables": {
+          "AskForProgramName": "extension.name-debug.getProgramName"
+        }
+      }
     ]
   },
   "scripts": {
