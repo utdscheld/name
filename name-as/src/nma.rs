@@ -356,7 +356,7 @@ fn assemble_i(
 ) -> Result<u32, &'static str> {
     let mut rs: u8;
     let mut rt: u8;
-    let mut imm: u16;
+    let imm: u16;
 
     match i_struct.form {
         IForm::RtImm => {
@@ -393,16 +393,6 @@ fn assemble_i(
                 Some(v) => imm = ((*v) - instr_address) as u16,
                 None => return Err("Undeclared label"),
             }
-            // imm = match i_args[3].parse::<u16>() {
-            //     Ok(v) => {
-            //         if v % 4 != 0 {
-            //             return Err("Branch position must be word-aligned");
-            //         } else {
-            //             v / 4
-            //         }
-            //     }
-            //     Err(_) => return Err("Failed to parse imm"),
-            // };
         }
         IForm::RtRsImm => {
             enforce_length(&i_args, 4)?;
@@ -496,22 +486,48 @@ fn assemble_j(
     Ok(result)
 }
 
+use crate::parser::MipsParser;
+use crate::parser::Rule;
+use pest::Parser;
+
 // General assembler entrypoint
 pub fn assemble(args: &Args) -> Result<(), &'static str> {
     // IO Setup
     let input_fn = &args.input_as;
-    let output_fn = &args.output_as;
+    // let output_fn = &args.output_as;
 
-    let output_file: File = match File::create(output_fn) {
-        Ok(v) => v,
-        Err(_) => return Err("Failed to open output file"),
-    };
+    // let output_file: File = match File::create(output_fn) {
+    //     Ok(v) => v,
+    //     Err(_) => return Err("Failed to open output file"),
+    // };
 
     // Read input
     let file_contents: String = match fs::read_to_string(input_fn) {
         Ok(v) => v,
         Err(_) => return Err("Failed to read input file contents"),
     };
+
+    let pairs = MipsParser::parse(Rule::vernaculars, file_contents.as_str())
+        .unwrap_or_else(|e| panic!("{}", e));
+
+    for pair in pairs {
+        // A pair is a combination of the rule which matched and a span of input
+        println!("Rule:    {:?}", pair.as_rule());
+        println!("Span:    {:?}", pair.as_span());
+        println!("Text:    {}", pair.as_str());
+
+        // A pair can be converted to an iterator of the tokens which make it up:
+        for inner_pair in pair.into_inner() {
+            match inner_pair.as_rule() {
+                Rule::vernacular => println!("Vernacular:   {}", inner_pair.as_str()),
+                _ => unreachable!(),
+            };
+        }
+    }
+
+    Ok(())
+
+    /*
 
     // Parse labels (TODO : Make more robust later)
     let mut current_addr: u32 = TEXT_ADDRESS_BASE;
@@ -677,4 +693,5 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
         println!("Args: {:?}", args);
         Err("Unterminated parsing, likely due to uncaught syntax error")
     }
+    */
 }
