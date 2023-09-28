@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import * as dap from '@vscode/debugadapter';
 import { HelloWorldPanel } from './HelloWorldPanel';
 import { spawn } from "child_process";
+import path = require('path');
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -48,6 +49,32 @@ export function activate(context: vscode.ExtensionContext) {
 	//child.on("exit", (code) => {
 	//	console.log(`Child process exited with code ${code}`);
 	//});
+	console.log(new dap.InitializedEvent());
+
+	var runCmd = path.join(__dirname, "..\\name-emu");
+	runCmd = runCmd.concat(" & cargo run")
+	console.log(runCmd);
+
+	const child = spawn("cmd.exe", ["/c", runCmd.toString()], {
+		cwd: process.cwd(),
+	});
+
+	console.log(new dap.InitializedEvent());
+	console.log("I am daping");
+
+	//child.stdin.write(new dap.InitializedEvent());
+
+	child.stdout.on("data", (data) => {
+		console.log(data.toString());
+	});
+
+	child.stderr.on("data", (data) => {
+		console.error(data.toString());
+	});
+	  
+	child.on("exit", (code) => {
+		console.log(`Child process exited with code ${code}`);
+	});
 
 	//exec("cd c:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu & cargo run", (err, stdout, stderr) => {
 	//	if (err) {
