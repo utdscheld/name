@@ -1,11 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
+'use strict';
 import * as vscode from 'vscode';
-//import * as dap from '@vscode/debugadapter';
 import { HelloWorldPanel } from './HelloWorldPanel';
-//import { spawn } from "child_process";
-//import path = require('path');
-
 import * as Net from 'net';
 import { randomBytes } from 'crypto';
 import { tmpdir } from 'os';
@@ -45,8 +42,6 @@ export function activate(context: vscode.ExtensionContext) {
 			break;
 	}
 
-	console.log("I got here too!");
-
 	context.subscriptions.push(
 		vscode.commands.registerCommand("vsname2.helloWorld", () => {
 			HelloWorldPanel.createOrShow(context.extensionUri);
@@ -67,19 +62,22 @@ class DebugAdapterExecutableFactory implements vscode.DebugAdapterDescriptorFact
 
 		// use the executable specified in the package.json if it exists or determine it based on some other information (e.g. the session)
 		if (!executable) {
-			const command = "C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu\\target\\release\\name.exe";
-			//const options = {
-			//	cwd: "working directory for executable",
-			//	env: { "envVariable": "some value" }
-			//};
-			executable = new vscode.DebugAdapterExecutable(command);
+			const command = "absolute path to my DA executable";
+			const args = [
+				"some args",
+				"another arg"
+			];
+			const options = {
+				cwd: "working directory for executable",
+				env: { "envVariable": "some value" }
+			};
+			executable = new vscode.DebugAdapterExecutable(command, args, options);
 		}
 
 		// make VS Code launch the DA executable
 		return executable;
 	}
 }
-
 class MockDebugAdapterServerDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
 
 	private server?: Net.Server;
@@ -105,6 +103,7 @@ class MockDebugAdapterServerDescriptorFactory implements vscode.DebugAdapterDesc
 		}
 	}
 }
+
 
 class MockDebugAdapterNamedPipeServerDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
 

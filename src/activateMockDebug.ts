@@ -57,7 +57,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	context.subscriptions.push(vscode.commands.registerCommand('extension.mock-debug.getProgramName', config => {
 		return vscode.window.showInputBox({
 			placeHolder: "Please enter the name of a markdown file in the workspace folder",
-			value: "mips_test.asm"
+			value: "readme.md"
 		});
 	}));
 

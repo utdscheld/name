@@ -122,6 +122,10 @@
       {
         "command": "extension.mock-debug.toggleFormatting",
         "title": "Toggle between decimal and hex formatting"
+      },
+      {
+        "command": "vsname2.helloWorld",
+        "title": "Hello World"
       }
     ],
     "breakpoints": [
@@ -136,7 +140,7 @@
           "markdown"
         ],
         "label": "Mock Debug",
-        "program": "C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu\\target\\release\\name.exe",
+        "program": "./out/debugAdapter.js",
         "runtime": "node",
         "configurationAttributes": {
           "launch": {
