@@ -111,7 +111,7 @@ fn main() -> DynResult<()> {
 
   let mut mips: Mips = Default::default();
 
-
+loop {
   let req = match server.poll_request()? {
     Some(req) => req,
     None => return Err(Box::new(MyAdapterError::MissingCommandError)),
@@ -119,7 +119,7 @@ fn main() -> DynResult<()> {
   match req.command {
     Command::Initialize(_) => {
       let rsp = req.success(
-        ResponseBody::Initialize(capabilities),
+        ResponseBody::Initialize(capabilities.clone()),
       );
   
       server.respond(rsp)?;
@@ -243,6 +243,7 @@ fn main() -> DynResult<()> {
 
     _ => () //Err(Box::new(MyAdapterError::UnhandledCommandError))
   };
+}
 
   Ok(())
 }

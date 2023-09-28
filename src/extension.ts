@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import * as dap from '@vscode/debugadapter';
 import { HelloWorldPanel } from './HelloWorldPanel';
 import { spawn } from "child_process";
+import path = require('path');
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -28,7 +29,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	console.log(new dap.InitializedEvent());
 
-	const child = spawn("cmd.exe", ["/c", "cd c:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu & cargo run"], {
+	var runCmd = path.join(__dirname, "..\\name-emu");
+	runCmd = runCmd.concat(" & cargo run")
+	console.log(runCmd);
+
+	const child = spawn("cmd.exe", ["/c", runCmd.toString()], {
 		cwd: process.cwd(),
 	});
 
