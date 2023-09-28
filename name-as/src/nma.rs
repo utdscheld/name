@@ -54,14 +54,6 @@ pub struct J {
     opcode: u8,
 }
 
-/// Parses a label
-pub fn label(token: &str) -> Result<&str, &'static str> {
-    match token.strip_suffix(':') {
-        Some(s) => Ok(s),
-        None => Err("Not label"),
-    }
-}
-
 /// Parses an R-type instruction mnemonic into an [R]
 pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
     match mnemonic {
@@ -166,15 +158,6 @@ fn j_operation(mnemonic: &str) -> Result<J, &'static str> {
     }
 }
 
-/// Split a string into meaningful, atomic elements of the MIPS language
-pub fn tokenize(raw_text: &str) -> Vec<&str> {
-    // raw_text.split_whitespace().collect::<Vec<&str>>()
-    raw_text
-        .split(&[',', ' ', '\t', '\r', '\n'][..])
-        .filter(|&s| !s.is_empty())
-        .collect::<Vec<&str>>()
-}
-
 /// Write a u32 into a file, zero-padded to 32 bits (4 bytes)
 pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
     const PADDED_LENGTH: usize = 4;
@@ -191,24 +174,6 @@ pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
 
     // Write to file
     file.write_all(&padded_buffer)
-}
-
-/// Represents the state of the assembler at any given point
-#[derive(Debug, PartialEq)]
-enum AssemblerState {
-    /// State before any processing has occurred
-    Initial,
-    /// The assembler is in the process of scanning in new tokens
-    Scanning,
-    /// The assembler has encountered an R-type instruction and
-    /// is collecting its arguments before assembling
-    CollectingRArguments,
-    /// The assembler has encountered an I-type instruction and
-    /// is collecting its arguments before assembling
-    CollectingIArguments,
-    /// The assembler has encountered a J-type instruction and
-    /// is collecting its arguments before assembling
-    CollectingJArguments,
 }
 
 /// Converts a numbered mnemonic ($t0, $s8, etc) or literal (55, 67, etc) to its integer representation
