@@ -14,7 +14,7 @@ fn mask_u32(n: u32, x: u8) -> u32 {
     n & ((1 << x) - 1)
 }
 
-const MIPS_TEXT_ADDRESS: u32 = 0x00400000;
+const TEXT_ADDRESS_BASE: u32 = 0;
 const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 
 /// The form of an R-type instruction, specificially
@@ -514,7 +514,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     };
 
     // Parse labels (TODO : Make more robust later)
-    let mut current_addr: u32 = MIPS_TEXT_ADDRESS;
+    let mut current_addr: u32 = TEXT_ADDRESS_BASE;
     let mut labels: HashMap<&str, u32> = HashMap::new();
     for line in file_contents.lines() {
         if line.is_empty() {
@@ -529,23 +529,23 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
 
         current_addr += MIPS_INSTR_BYTE_WIDTH;
     }
-    current_addr = MIPS_TEXT_ADDRESS;
+    current_addr = TEXT_ADDRESS_BASE;
 
     // Tokenize input
     let mut tokens = tokenize(&file_contents);
 
     // Assembler setup
     let mut state = AssemblerState::Initial;
-    let mut r_struct: R = R {
+    let mut r_struct = R {
         shamt: 0,
         funct: 0,
         form: RForm::None,
     };
-    let mut i_struct: I = I {
+    let mut i_struct = I {
         opcode: 0,
         form: IForm::None,
     };
-    let mut j_struct: J = J { opcode: 0 };
+    let mut j_struct = J { opcode: 0 };
     let mut args: Vec<&str> = Vec::new();
 
     // Iterate over all tokens
