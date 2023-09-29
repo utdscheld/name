@@ -147,10 +147,10 @@
       }
     ],
     "debuggers": [{
-      "type": "name",
+      "type": "vsname",
       "languages": ["mips-assembly"],
       "label": "MIPS Debug",
-      "program": "C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu\\target\\release\\name.exe",
+      "program": "/home/qwe/Documents/CS4485/name/name-emu/target/release/name",
       "configurationAttributes": {
         "launch": {
           "required": ["program"],
@@ -171,7 +171,7 @@
 
       "initialConfigurations": [
         {
-          "type": "name",
+          "type": "vsname",
           "request": "launch",
           "name": "Ask for file name",
           "program": "${workspaceFolder}/${command:AskForProgramName}",
@@ -184,7 +184,7 @@
           "label": "NAME Debug: Launch",
           "description": "A new configuration for launching a NAME debug program",
           "body": {
-            "type": "name",
+            "type": "vsname",
             "request": "launch",
             "name": "${2:Launch Program}",
             "program": "^\"\\${workspaceFolder}/${1:Program}\""

@@ -38,7 +38,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 			}
 			if (targetResource) {
 				vscode.debug.startDebugging(undefined, {
-					type: 'name',
+					type: 'vsname',
 					name: 'Debug File',
 					request: 'launch',
 					program: targetResource.fsPath,
@@ -56,17 +56,17 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 
 	context.subscriptions.push(vscode.commands.registerCommand('extension.vsname.getProgramName', config => {
 		return vscode.window.showInputBox({
-			placeHolder: "Please enter the name of a markdown file in the workspace folder",
+			placeHolder: "Please enter the name of a mips-assembly file in the workspace folder",
 			value: "readme.md"
 		});
 	}));
 
-	// register a configuration provider for 'mock' debug type
+	// register a configuration provider for 'vsname' debug type
 	const provider = new MockConfigurationProvider();
-	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('mock', provider));
+	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('vsname', provider));
 
-	// register a dynamic configuration provider for 'mock' debug type
-	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('mock', {
+	// register a dynamic configuration provider for 'vsname' debug type
+	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('vsname', {
 		provideDebugConfigurations(folder: WorkspaceFolder | undefined): ProviderResult<DebugConfiguration[]> {
 			return [
 				{
@@ -92,16 +92,16 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}, vscode.DebugConfigurationProviderTriggerKind.Dynamic));
 
 	if (!factory) {
-		factory = new InlineDebugAdapterFactory();
+		factory = new ExecutableDebugAdapterFactory();
 	}
-	context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('mock', factory));
+	context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('vsname', factory));
 	if ('dispose' in factory) {
 		context.subscriptions.push(factory);
 	}
 
 	// override VS Code's default implementation of the debug hover
 	// here we match only Mock "variables", that are words starting with an '$'
-	context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('markdown', {
+	context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('mips-assembly', {
 		provideEvaluatableExpression(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.EvaluatableExpression> {
 
 			const VARIABLE_REGEXP = /\$[a-z][a-z0-9]*/ig;
@@ -120,7 +120,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}));
 
 	// override VS Code's default implementation of the "inline values" feature"
-	context.subscriptions.push(vscode.languages.registerInlineValuesProvider('markdown', {
+	context.subscriptions.push(vscode.languages.registerInlineValuesProvider('mips-assembly', {
 
 		provideInlineValues(document: vscode.TextDocument, viewport: vscode.Range, context: vscode.InlineValueContext) : vscode.ProviderResult<vscode.InlineValue[]> {
 
@@ -163,8 +163,8 @@ class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
 		// if launch.json is missing or empty
 		if (!config.type && !config.request && !config.name) {
 			const editor = vscode.window.activeTextEditor;
-			if (editor && editor.document.languageId === 'markdown') {
-				config.type = 'name';
+			if (editor && editor.document.languageId === 'mips-assembly') {
+				config.type = 'vsname';
 				config.name = 'Launch';
 				config.request = 'launch';
 				config.program = '${file}';
@@ -211,5 +211,12 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
 
 	createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
 		return new vscode.DebugAdapterInlineImplementation(new MockDebugSession(workspaceFileAccessor));
+	}
+}
+
+class ExecutableDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
+
+	createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
+		return new vscode.DebugAdapterExecutable('/home/qwe/Documents/CS4485/name/name-emu/target/release/name');
 	}
 }
