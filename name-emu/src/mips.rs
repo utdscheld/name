@@ -133,9 +133,26 @@ impl Mips {
                     None => {return Err(ExecutionErrors::IntegerOverflow);}
                 }
             }
+            // Or
+            0x25 => {
+                self.regs[ins.rd] = self.regs[ins.rt] | self.regs[ins.rs];
+            }
             // Xor
             0x26 => {
                 self.regs[ins.rd] = self.regs[ins.rt] ^ self.regs[ins.rs];
+            }
+            // Nor
+            0x27 => {
+                self.regs[ins.rd] = !(self.regs[ins.rt] | self.regs[ins.rs]);
+            }
+            // Set Less Than
+            0x2A => {
+                if self.regs[ins.rt] < self.regs[ins.rs] {
+                    self.regs[ins.rd] = 1;
+                }
+                else {
+                    self.regs[ins.rd] = 0;
+                }
             }
             _ => return Err(ExecutionErrors::UndefinedInstruction)
         }
@@ -146,6 +163,20 @@ impl Mips {
         let memory_address = (ins.rt as i64 + (ins.imm as i64)) as u32;
 
         match ins.opcode {
+            // Set Less Than Immediate (signed)
+            // Forcing sign extend through a series of casts. See load byte comments
+            0xA => {
+                if self.regs[ins.rs] < ins.imm as i8 as i32 as u32 {
+                    self.regs[ins.rt] = 1;
+                }
+                else {
+                    self.regs[ins.rt] = 0;
+                }
+            }
+            // // Set Less Than 
+            // 0xB => {
+            //     if 
+            // }
             // Or Immediate
             0xD => {
                 // Rust zero-extends unsigned values when up-casting
