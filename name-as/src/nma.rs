@@ -416,10 +416,10 @@ fn assemble_j(
     let jump_address: u32 = labels[j_args[0]];
     println!("Masking jump address");
     println!("Jump address original: {}", jump_address);
-    let mut masked_jump_address = mask_u32(jump_address, 26);
+    let mut masked_jump_address = mask_u32(jump_address, 28);
     println!("Jump address masked: {}", masked_jump_address);
     if jump_address != masked_jump_address {
-        panic!("Tried to assemble illegal jump address");
+        return Err("Tried to assemble illegal jump address");
     }
 
     // Byte-align jump address
