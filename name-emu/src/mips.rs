@@ -6,12 +6,14 @@ pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
 const LEN_TEXT_INITIAL: usize = 200;
 
+#[derive(Debug)]
 enum BranchDelays {
     NotActive,
     Set,
     Ready
 }
 
+#[derive(Debug)]
 pub(crate) struct Mips {
     pub regs: [u32; 32],
     pub floats: [f32; 32],

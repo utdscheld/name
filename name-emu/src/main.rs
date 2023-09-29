@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
 use dap::events::{StoppedEventBody, ExitedEventBody};
-use dap::responses::ReadMemoryResponse;
-use dap::types::StoppedEventReason;
+use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse};
+use dap::types::{StoppedEventReason, Thread, StackFrame};
 use thiserror::Error;
 
 use dap::prelude::*;
@@ -62,16 +62,18 @@ type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 // }
 
 fn main() -> DynResult<()> {
-  let mut file = File::create("/tmp/testingname.txt")?;
-  file.write_all(b"Hello world! I am testing!!")?;
+  let mut file = File::create("/tmp/name/name_log.txt")?;
+  file.write_all(b"Hello world! I am testing!!\n")?;
   let output = BufWriter::new(std::io::stdout());
-  let f = File::open("testinput.txt")?;
-  let input = BufReader::new(f);
+
+  let input = BufReader::new(std::io::stdin());
+
+
   let mut server = Server::new(input, output);
 
   let capabilities = types::Capabilities {
-    supports_configuration_done_request: Some(false),
-    supports_function_breakpoints: Some(false),
+    supports_configuration_done_request: Some(true),
+    supports_function_breakpoints: Some(true),
     supports_conditional_breakpoints: Some(false),
     supports_hit_conditional_breakpoints: Some(false),
     supports_evaluate_for_hovers: Some(false),
@@ -113,15 +115,17 @@ fn main() -> DynResult<()> {
 
   let mut mips: Mips = Default::default();
 
-
+loop {
   let req = match server.poll_request()? {
     Some(req) => req,
     None => return Err(Box::new(MyAdapterError::MissingCommandError)),
   };
+  writeln!(file, "Request {:?} received", req.command)?;
+  writeln!(file)?;
   match req.command {
     Command::Initialize(_) => {
       let rsp = req.success(
-        ResponseBody::Initialize(capabilities),
+        ResponseBody::Initialize(capabilities.clone()),
       );
   
       server.respond(rsp)?;
@@ -136,6 +140,20 @@ fn main() -> DynResult<()> {
     // Launch does nothing in NAME, since all state was already set up by the time the protocol reached this point.
     Command::Launch(_) => {
 
+      let rsp = req.success(
+        ResponseBody::Launch,
+      );
+
+      let stopped_event_body = StoppedEventBody {
+        reason: StoppedEventReason::Step,
+        description: None,
+        thread_id: Some(0),
+        preserve_focus_hint: None,
+        text: None,
+        all_threads_stopped: None,
+        hit_breakpoint_ids: None
+      };
+      server.send_event(Event::Stopped(stopped_event_body))?;
     }
 
     Command::WriteMemory(write_mem_args) => {
@@ -210,7 +228,7 @@ fn main() -> DynResult<()> {
           StoppedEventBody {
             reason: StoppedEventReason::Step,
             description: None,
-            thread_id: None,
+            thread_id: Some(0),
             preserve_focus_hint: None,
             text: None,
             all_threads_stopped: None,
@@ -221,7 +239,7 @@ fn main() -> DynResult<()> {
           StoppedEventBody {
             reason: StoppedEventReason::Exception,
             description: Some("Exception".to_owned()),
-            thread_id: None,
+            thread_id: Some(0),
             preserve_focus_hint: None,
             text: Some(execution_error.to_string()),
             all_threads_stopped: None,
@@ -239,12 +257,73 @@ fn main() -> DynResult<()> {
         server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
       }
       else {
+        writeln!(file, "{:?}", stopped_event_body)?;
+        writeln!(file, "{:?}", mips)?;
         server.send_event(Event::Stopped(stopped_event_body))?;
       }
     }
 
-    _ => () //Err(Box::new(MyAdapterError::UnhandledCommandError))
+    Command::SetExceptionBreakpoints(_) => {
+      let rsp = req.success(
+        ResponseBody::SetExceptionBreakpoints(SetExceptionBreakpointsResponse{breakpoints: None})
+      );
+      server.respond(rsp)?;
+    }
+
+    Command::Threads => {
+      let rsp = req.success(
+        ResponseBody::Threads(ThreadsResponse{threads: vec![Thread{id: 0, name: "MIPS".to_string()}]})
+      );
+      server.respond(rsp)?;
+    }
+
+    Command::Disconnect(_) => {
+      let rsp = req.success(
+        ResponseBody::Disconnect
+      );
+      server.respond(rsp)?;
+      break;
+    }
+
+    Command::StackTrace(_) => {
+      let rsp = req.success(
+        ResponseBody::StackTrace(StackTraceResponse{stack_frames: vec![
+          StackFrame{
+            id: 0,
+            name: "MIPS".to_string(),
+            source: None,
+            line: 0,
+            column: 0,
+            end_line: Some(0),
+            end_column: Some(0),
+            can_restart: Some(false),
+            instruction_pointer_reference: None,
+            module_id: None,
+            presentation_hint: None
+          }
+        ], total_frames: None})
+      );
+      server.respond(rsp)?;
+    }
+    
+    Command::Scopes(_) => {
+      let rsp = req.success(
+        ResponseBody::Scopes(ScopesResponse{scopes: vec![]})
+      );
+      server.respond(rsp)?;
+    }
+
+    Command::Variables(_) => {
+      let rsp = req.success(
+        ResponseBody::Variables(VariablesResponse{variables: vec![]})
+      );
+      server.respond(rsp)?;
+    }
+
+    _ => ()
+    // _ => () //Err(Box::new(MyAdapterError::UnhandledCommandError))
   };
+}
 
   Ok(())
 }
