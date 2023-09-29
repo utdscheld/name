@@ -2,7 +2,7 @@
   "name": "vsname",
   "displayName": "NAME",
   "version": "0.0.1",
-  "publisher": "University of Texas at Dallas",
+  "publisher": "UTD",
   "description": "VS Code extension for the NAME emulator",
   "author": {
     "name": "University of Texas at Dallas"
@@ -100,7 +100,7 @@
       "debug/variables/context": [
         {
           "command": "extension.vsname.toggleFormatting",
-          "when": "debugType == 'mock' && debugProtocolVariableMenuContext == 'simple'"
+          "when": "debugType == 'vsname' && debugProtocolVariableMenuContext == 'simple'"
         }
       ]
     },
