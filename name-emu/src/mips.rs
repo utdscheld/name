@@ -64,11 +64,11 @@ impl Default for Mips {
             floats: [0f32; 32],
             mult_hi: 0,
             mult_lo: 0,
-            pc: 0x00400000,
+            pc: DOT_TEXT_START_ADDRESS as usize,
             branch_delay_target: 0,
             branch_delay_status: BranchDelays::NotActive,
             memories: vec![
-                (Vec::with_capacity(LEN_TEXT_INITIAL), DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
+                (vec![0; LEN_TEXT_INITIAL], DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
             ]
         }
     }
