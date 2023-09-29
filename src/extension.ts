@@ -43,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("vsname2.helloWorld", () => {
+		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
 			HelloWorldPanel.createOrShow(context.extensionUri);
 		})
 	);

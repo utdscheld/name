@@ -15,14 +15,14 @@ import { FileAccessor } from './mockRuntime';
 export function activateMockDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('extension.mock-debug.runEditorContents', (resource: vscode.Uri) => {
+		vscode.commands.registerCommand('extension.vsname.runEditorContents', (resource: vscode.Uri) => {
 			let targetResource = resource;
 			if (!targetResource && vscode.window.activeTextEditor) {
 				targetResource = vscode.window.activeTextEditor.document.uri;
 			}
 			if (targetResource) {
 				vscode.debug.startDebugging(undefined, {
-					type: 'mock',
+					type: 'vsname',
 					name: 'Run File',
 					request: 'launch',
 					program: targetResource.fsPath
@@ -31,14 +31,14 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 				);
 			}
 		}),
-		vscode.commands.registerCommand('extension.mock-debug.debugEditorContents', (resource: vscode.Uri) => {
+		vscode.commands.registerCommand('extension.vsname.debugEditorContents', (resource: vscode.Uri) => {
 			let targetResource = resource;
 			if (!targetResource && vscode.window.activeTextEditor) {
 				targetResource = vscode.window.activeTextEditor.document.uri;
 			}
 			if (targetResource) {
 				vscode.debug.startDebugging(undefined, {
-					type: 'mock',
+					type: 'name',
 					name: 'Debug File',
 					request: 'launch',
 					program: targetResource.fsPath,
@@ -46,7 +46,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 				});
 			}
 		}),
-		vscode.commands.registerCommand('extension.mock-debug.toggleFormatting', (variable) => {
+		vscode.commands.registerCommand('extension.vsname.toggleFormatting', (variable) => {
 			const ds = vscode.debug.activeDebugSession;
 			if (ds) {
 				ds.customRequest('toggleFormatting');
@@ -54,7 +54,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 		})
 	);
 
-	context.subscriptions.push(vscode.commands.registerCommand('extension.mock-debug.getProgramName', config => {
+	context.subscriptions.push(vscode.commands.registerCommand('extension.vsname.getProgramName', config => {
 		return vscode.window.showInputBox({
 			placeHolder: "Please enter the name of a markdown file in the workspace folder",
 			value: "readme.md"
@@ -72,19 +72,19 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 				{
 					name: "Dynamic Launch",
 					request: "launch",
-					type: "mock",
+					type: "vsname",
 					program: "${file}"
 				},
 				{
 					name: "Another Dynamic Launch",
 					request: "launch",
-					type: "mock",
+					type: "vsname",
 					program: "${file}"
 				},
 				{
 					name: "Mock Launch",
 					request: "launch",
-					type: "mock",
+					type: "vsname",
 					program: "${file}"
 				}
 			];
@@ -164,7 +164,7 @@ class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
 		if (!config.type && !config.request && !config.name) {
 			const editor = vscode.window.activeTextEditor;
 			if (editor && editor.document.languageId === 'markdown') {
-				config.type = 'mock';
+				config.type = 'name';
 				config.name = 'Launch';
 				config.request = 'launch';
 				config.program = '${file}';

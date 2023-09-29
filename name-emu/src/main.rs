@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 
 use dap::events::{StoppedEventBody, ExitedEventBody};
 use dap::responses::ReadMemoryResponse;
@@ -62,6 +62,8 @@ type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 // }
 
 fn main() -> DynResult<()> {
+  let mut file = File::create("testingname.txt")?;
+  file.write_all(b"Hello world! I am testing!!")?;
   let output = BufWriter::new(std::io::stdout());
   let f = File::open("testinput.txt")?;
   let input = BufReader::new(f);

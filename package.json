@@ -1,30 +1,30 @@
 {
-  "name": "mock-debug",
-  "displayName": "Mock Debug",
-  "version": "0.52.0",
-  "publisher": "ms-vscode",
-  "description": "Starter extension for developing debug adapters for VS Code.",
+  "name": "vsname",
+  "displayName": "NAME",
+  "version": "0.0.1",
+  "publisher": "University of Texas at Dallas",
+  "description": "VS Code extension for the NAME emulator",
   "author": {
-    "name": "Microsoft Corporation"
+    "name": "University of Texas at Dallas"
   },
-  "license": "MIT",
+  "license": "Proprietary",
   "keywords": [
-    "multi-root ready"
+    "MIPS"
   ],
   "engines": {
     "vscode": "^1.66.0"
   },
-  "icon": "images/mock-debug-icon.png",
+  "icon": "images/vsname-icon.png",
   "categories": [
     "Debuggers"
   ],
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/Microsoft/vscode-mock-debug.git"
+    "url": "https://github.com/utdscheld/name"
   },
   "bugs": {
-    "url": "https://github.com/Microsoft/vscode-mock-debug/issues"
+    "url": "https://github.com/utdscheld/name/issues"
   },
   "scripts": {
     "compile": "tsc -p ./",
@@ -66,9 +66,9 @@
   "main": "./dist/extension.js",
   "browser": "./dist/web-extension.js",
   "activationEvents": [
-    "onDebugResolve:mock",
-    "onDebugDynamicConfigurations:mock",
-    "onCommand:extension.mock-debug.getProgramName"
+    "onDebugResolve:vsname",
+    "onDebugDynamicConfigurations:vsname",
+    "onCommand:extension.vsname.getProgramName"
   ],
   "workspaceTrust": {
     "request": "never"
@@ -77,57 +77,70 @@
     "menus": {
       "editor/title/run": [
         {
-          "command": "extension.mock-debug.runEditorContents",
+          "command": "extension.vsname.runEditorContents",
           "when": "resourceLangId == markdown",
           "group": "navigation@1"
         },
         {
-          "command": "extension.mock-debug.debugEditorContents",
+          "command": "extension.vsname.debugEditorContents",
           "when": "resourceLangId == markdown",
           "group": "navigation@2"
         }
       ],
       "commandPalette": [
         {
-          "command": "extension.mock-debug.debugEditorContents",
+          "command": "extension.vsname.debugEditorContents",
           "when": "resourceLangId == markdown"
         },
         {
-          "command": "extension.mock-debug.runEditorContents",
+          "command": "extension.vsname.runEditorContents",
           "when": "resourceLangId == markdown"
         }
       ],
       "debug/variables/context": [
         {
-          "command": "extension.mock-debug.toggleFormatting",
+          "command": "extension.vsname.toggleFormatting",
           "when": "debugType == 'mock' && debugProtocolVariableMenuContext == 'simple'"
         }
       ]
     },
     "commands": [
       {
-        "command": "extension.mock-debug.debugEditorContents",
+        "command": "extension.vsname.debugEditorContents",
         "title": "Debug File",
         "category": "Mock Debug",
         "enablement": "!inDebugMode",
         "icon": "$(debug-alt)"
       },
       {
-        "command": "extension.mock-debug.runEditorContents",
+        "command": "extension.vsname.runEditorContents",
         "title": "Run File",
         "category": "Mock Debug",
         "enablement": "!inDebugMode",
         "icon": "$(play)"
       },
       {
-        "command": "extension.mock-debug.toggleFormatting",
+        "command": "extension.vsname.toggleFormatting",
         "title": "Toggle between decimal and hex formatting"
       },
       {
-        "command": "vsname2.helloWorld",
+        "command": "extension.vsname.helloWorld",
         "title": "Hello World"
       }
     ],
+		"languages": [
+			{
+				"id": "mips-assembly",
+				"extensions": [
+					".asm",
+					".s"
+				],
+				"aliases": [
+					"Assembler file"
+				]
+			}
+		],
+
     "breakpoints": [
       {
         "language": "mips-assembly"
@@ -135,8 +148,52 @@
     ],
     "debuggers": [{
       "type": "name",
-      "windows": {
-        "program": "C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu\\target\\release\\name.exe"
+      "languages": ["mips-assembly"],
+      "label": "MIPS Debug",
+      "program": "C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name-emu\\target\\release\\name.exe",
+      "configurationAttributes": {
+        "launch": {
+          "required": ["program"],
+          "properties": {
+            "program": {
+              "type": "string",
+              "description": "Absolute path to a text file.",
+              "default": "${workspaceFolder}/${command:AskForProgramName}"
+            },
+            "stopOnEntry": {
+              "type": "boolean",
+              "description": "Automatically stop after launch.",
+              "default": true
+            }
+          }
+        }
+      },
+
+      "initialConfigurations": [
+        {
+          "type": "name",
+          "request": "launch",
+          "name": "Ask for file name",
+          "program": "${workspaceFolder}/${command:AskForProgramName}",
+          "stopOnEntry": true
+        }
+      ],
+
+      "configurationSnippets": [
+        {
+          "label": "NAME Debug: Launch",
+          "description": "A new configuration for launching a NAME debug program",
+          "body": {
+            "type": "name",
+            "request": "launch",
+            "name": "${2:Launch Program}",
+            "program": "^\"\\${workspaceFolder}/${1:Program}\""
+          }
+        }
+      ],
+
+      "variables": {
+        "AskForProgramName": "extension.vsname-debug.getProgramName"
       }
     }]
   },
