@@ -28,7 +28,7 @@ export class HelloWorldPanel {
     // Otherwise, create a new panel.
     const panel = vscode.window.createWebviewPanel(
       HelloWorldPanel.viewType,
-      "VSinder",
+      "Memory",
       column || vscode.ViewColumn.One,
       {
         // Enable javascript in the webview
@@ -123,10 +123,10 @@ export class HelloWorldPanel {
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
-    //// // And the uri we use to load this script in the webview
-    //const scriptUri = webview.asWebviewUri(
-    //  vscode.Uri.joinPath(this._extensionUri, "out", "compiled/swiper.js")
-    //);
+    // // And the uri we use to load this script in the webview
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, "media", "main.js")
+    );
 //
     //// Local path to css styles
     // Uri to load styles into webview
@@ -166,8 +166,9 @@ export class HelloWorldPanel {
         </script>
 			</head>
       <body>
-      <h1>Hello World</h1>
+      <h1>Data Segment</h1>
 			</body>
+      <script src="${scriptUri}" nonce="${nonce}">
 			</html>`;
   }
 }

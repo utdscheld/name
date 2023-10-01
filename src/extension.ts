@@ -19,6 +19,12 @@ const runMode: 'external' | 'server' | 'namedPipeServer' | 'inline' = 'inline';
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Congratulations, your extension "testinghi" is now active!');
 
+	context.subscriptions.push(
+		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
+			HelloWorldPanel.createOrShow(context.extensionUri);
+		})
+	);
+	
 	// debug adapters can be run in different ways by using a vscode.DebugAdapterDescriptorFactory:
 	switch (runMode) {
 		case 'server':
@@ -41,12 +47,6 @@ export function activate(context: vscode.ExtensionContext) {
 			activateMockDebug(context);
 			break;
 	}
-
-	context.subscriptions.push(
-		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
-			HelloWorldPanel.createOrShow(context.extensionUri);
-		})
-	);
 }
 
 // This method is called when your extension is deactivated
