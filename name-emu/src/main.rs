@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
-use dap::events::{StoppedEventBody, ExitedEventBody};
+use dap::events::{StoppedEventBody, ExitedEventBody, TerminatedEventBody};
 use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse};
 use dap::types::{StoppedEventReason, Thread, StackFrame, Scope, Source, Variable};
 use thiserror::Error;
@@ -63,6 +63,19 @@ type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 //     }
 // }
 
+fn reset_mips() -> Mips {
+  // Reset execution and begin again.
+  let mut mips: Mips = Default::default();
+
+  let program_data = std::fs::read("/home/qwe/Documents/CS4485/name/name-as/output.o").unwrap();
+
+  for (i, byte) in program_data.iter().enumerate() {
+    mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
+  }
+
+  mips
+}
+
 fn main() -> DynResult<()> {
 
   let args_strings: Vec<String> = env::args().collect();
@@ -113,7 +126,7 @@ fn main() -> DynResult<()> {
     supports_modules_request: Some(false),
     additional_module_columns: None,
     supported_checksum_algorithms: None,
-    supports_restart_request: Some(false),
+    supports_restart_request: Some(true),
     supports_exception_options: Some(false),
     supports_value_formatting_options: Some(false),
     supports_exception_info_request: Some(false),
@@ -154,19 +167,10 @@ loop {
       );
   
       server.respond(rsp)?;
-
-      // Reset execution and begin again.
-      mips = Default::default();
   
       server.send_event(Event::Initialized)?;
 
-      let program_data = std::fs::read("/home/qwe/Documents/CS4485/name/name-as/output.o")?;
-
-      writeln!(file, "{:?}", program_data)?;
-    
-      for (i, byte) in program_data.iter().enumerate() {
-        mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
-      }
+      mips = reset_mips();
 
     }
 
@@ -311,12 +315,28 @@ loop {
       server.respond(rsp)?;
     }
 
-    Command::Disconnect(_) => {
+    Command::Disconnect(ref disconnect_args) => {
+
+      // If this is a restart sequence, don't die, and instead
+      // do nothing
+
+      let rst = disconnect_args.restart;
+      let restart = rst.map(serde_json::Value::Bool);
+
+      let terminated_event = TerminatedEventBody {
+        restart
+      };
+
+      server.send_event(Event::Terminated(Some(terminated_event)))?;
+
       let rsp = req.success(
         ResponseBody::Disconnect
       );
       server.respond(rsp)?;
-      break;
+      
+      if let None | Some(false) = rst {
+        break;
+      }
     }
 
     Command::StackTrace(_) => {
@@ -406,6 +426,26 @@ loop {
         ResponseBody::Variables(VariablesResponse{variables: registers})
       );
       server.respond(rsp)?;
+    }
+
+    Command::Restart(_) => {
+      mips = reset_mips();
+
+      let rsp = req.success(
+        ResponseBody::Restart
+      );
+      server.respond(rsp)?;
+
+      let stopped_event_body = StoppedEventBody {
+        reason: StoppedEventReason::Step,
+        description: None,
+        thread_id: Some(0),
+        preserve_focus_hint: None,
+        text: None,
+        all_threads_stopped: None,
+        hit_breakpoint_ids: None
+      };
+      server.send_event(Event::Stopped(stopped_event_body))?;
     }
 
     _ => ()
