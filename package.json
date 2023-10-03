@@ -126,6 +126,16 @@
       {
         "command": "extension.vsname.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "extension.vsname.bitmapDisplay",
+        "category": "VSName",
+        "title": "Open Bitmap Display"
+      },
+      {
+        "command": "extension.vsname.memoryTable",
+        "category": "VSName",
+        "title": "Open Data Segment"
       }
     ],
 		"languages": [

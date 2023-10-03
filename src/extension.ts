@@ -3,6 +3,8 @@
 'use strict';
 import * as vscode from 'vscode';
 import { HelloWorldPanel } from './HelloWorldPanel';
+import { BitmapDisplayPanel } from './bitmapDisplay'; 
+import { MemoryTablePanel } from './memoryTable'; 
 import * as Net from 'net';
 import { randomBytes } from 'crypto';
 import { tmpdir } from 'os';
@@ -22,6 +24,12 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
 			HelloWorldPanel.createOrShow(context.extensionUri);
+		}),
+		vscode.commands.registerCommand("extension.vsname.bitmapDisplay", () => {
+			BitmapDisplayPanel.createOrShow(context.extensionUri);
+		}),
+		vscode.commands.registerCommand("extension.vsname.memoryTable", () => {
+			MemoryTablePanel.createOrShow(context.extensionUri);
 		})
 	);
 	
