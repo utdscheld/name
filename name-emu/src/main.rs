@@ -62,9 +62,11 @@ type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 // }
 
 fn main() -> DynResult<()> {
-  let mut file = File::create("/tmp/name/name_log.txt")?;
-  file.write_all(b"Hello world! I am testing!!\n")?;
-  let output = BufWriter::new(std::io::stdout());
+  let log_path = std::path::Path::join(env::temp_dir().as_path(), "name_log.txt");
+  let mut file = File::create(log_path)?;
+  file.write_all(b"NAME Development Log\n")?;
+
+
 
   let input = BufReader::new(std::io::stdin());
 
@@ -134,6 +136,14 @@ loop {
       mips = Default::default();
   
       server.send_event(Event::Initialized)?;
+
+      let program_data = std::fs::read("/home/qwe/Documents/CS4485/name/name-as/output.o")?;
+
+      writeln!(file, "{:?}", program_data)?;
+    
+      for (i, byte) in program_data.iter().enumerate() {
+        mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
+      }
 
     }
 
@@ -222,7 +232,7 @@ loop {
     
     Command::Next(_) => {
       
-      let result = mips.step_one();
+      let result = mips.step_one(&mut file);
       let stopped_event_body = match result {
         Ok(()) | Err(ExecutionErrors::ProgramComplete) => {
           StoppedEventBody {
