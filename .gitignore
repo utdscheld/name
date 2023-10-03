@@ -23,12 +23,3 @@ package-lock.json
 *.out
 *.o
 !.artifacts
-
-mock_debug/out
-mock_debug/dist
-mock_debug/node_modules
-mock_debug/.vscode-test/
-mock_debug/npm-debug.log
-mock_debug/mock-debug.txt
-mock_debug/*.vsix
-mock_debug/.DS_Store
