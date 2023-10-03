@@ -3,7 +3,7 @@ use std::io::{BufReader, BufWriter, Write};
 
 use dap::events::{StoppedEventBody, ExitedEventBody};
 use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse};
-use dap::types::{StoppedEventReason, Thread, StackFrame};
+use dap::types::{StoppedEventReason, Thread, StackFrame, Scope, Source, Variable};
 use thiserror::Error;
 
 use dap::prelude::*;
@@ -153,6 +153,7 @@ loop {
       let rsp = req.success(
         ResponseBody::Launch,
       );
+      server.respond(rsp)?;
 
       let stopped_event_body = StoppedEventBody {
         reason: StoppedEventReason::Step,
@@ -300,32 +301,86 @@ loop {
         ResponseBody::StackTrace(StackTraceResponse{stack_frames: vec![
           StackFrame{
             id: 0,
-            name: "MIPS".to_string(),
-            source: None,
-            line: 0,
+            name: "mips".to_string(),
+            source: Some(Source { name: Some("/home/qwe/Documents/CS4485/name/mips_test.asm".to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
+            line: 1,
             column: 0,
-            end_line: Some(0),
-            end_column: Some(0),
-            can_restart: Some(false),
+            end_line: None,
+            end_column: None,
+            can_restart: None,
+            instruction_pointer_reference: None,
+            module_id: None,
+            presentation_hint: None
+          },
+          StackFrame{
+            id: 1,
+            name: "mips2".to_string(),
+            source: Some(Source { name: Some("/home/qwe/Documents/CS4485/name/mips_test.asm".to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
+            line: 1,
+            column: 0,
+            end_line: None,
+            end_column: None,
+            can_restart: None,
             instruction_pointer_reference: None,
             module_id: None,
             presentation_hint: None
           }
-        ], total_frames: None})
+        ], total_frames: Some(3)})
       );
       server.respond(rsp)?;
     }
     
     Command::Scopes(_) => {
       let rsp = req.success(
-        ResponseBody::Scopes(ScopesResponse{scopes: vec![]})
+        ResponseBody::Scopes(ScopesResponse{
+          scopes: vec![
+            Scope {
+              name: "Registers".to_string(),
+              presentation_hint: None,
+              // Notably, the magic 1001 is the only variables reference in this program. It can get the registers
+              // I'll probably want a second/third reference for floats etc.
+              variables_reference: 1001,
+              named_variables: None,
+              indexed_variables: None,
+              expensive: false,
+              source: None,
+              line: None,
+              column: None,
+              end_line: None,
+              end_column: None
+            }
+          ]
+        })
       );
       server.respond(rsp)?;
     }
 
-    Command::Variables(_) => {
+    Command::Variables(ref variables_arguments) => {
+
+      // I'm sure I could collect() this somehow but it's 12:15AM
+      let mut registers = Vec::with_capacity(mips.regs.len());
+
+
+      if variables_arguments.variables_reference == 1001 {
+        for (i, reg) in mips.regs.iter().enumerate() {
+          registers.push(
+            Variable {
+              name: format!("${}", i),
+              value: reg.to_string(),
+              type_field: None,
+              presentation_hint: None,
+              evaluate_name: None, // But I'm sure this should be something
+              variables_reference: 0, // Apparently I should make this 0 for non-nested structs
+              named_variables: Some(0),
+              indexed_variables: Some(0),
+              memory_reference: None // I think this would be neat to implement...
+            }
+          );
+        }
+      }
+
       let rsp = req.success(
-        ResponseBody::Variables(VariablesResponse{variables: vec![]})
+        ResponseBody::Variables(VariablesResponse{variables: registers})
       );
       server.respond(rsp)?;
     }
