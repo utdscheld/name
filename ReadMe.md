@@ -1,6 +1,8 @@
 # How to run - First Install
 ## First open name-as in a seperate window and run it
 - This is in the same branch
+- In "name-as" make a directory called ".artifacts"
+    - Add your .asm file you are using for testing to this directory
 - Run "make build"
 - Run "make"
 
