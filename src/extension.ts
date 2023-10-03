@@ -12,12 +12,18 @@ import { ProviderResult } from 'vscode';
 import { MockDebugSession } from './mockDebug';
 import { activateMockDebug, workspaceFileAccessor } from './activateMockDebug';
 
-const runMode: 'external' | 'server' | 'namedPipeServer' | 'inline' = 'inline';
+const runMode: 'external' | 'server' | 'namedPipeServer' | 'inline' = 'server';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Congratulations, your extension "testinghi" is now active!');
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
+			HelloWorldPanel.createOrShow(context.extensionUri);
+		})
+	);
 
 	// debug adapters can be run in different ways by using a vscode.DebugAdapterDescriptorFactory:
 	switch (runMode) {
@@ -42,11 +48,6 @@ export function activate(context: vscode.ExtensionContext) {
 			break;
 	}
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
-			HelloWorldPanel.createOrShow(context.extensionUri);
-		})
-	);
 }
 
 // This method is called when your extension is deactivated
@@ -84,17 +85,8 @@ class MockDebugAdapterServerDescriptorFactory implements vscode.DebugAdapterDesc
 
 	createDebugAdapterDescriptor(session: vscode.DebugSession, executable: vscode.DebugAdapterExecutable | undefined): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
 
-		if (!this.server) {
-			// start listening on a random port
-			this.server = Net.createServer(socket => {
-				const session = new MockDebugSession(workspaceFileAccessor);
-				session.setRunAsServer(true);
-				session.start(socket as NodeJS.ReadableStream, socket);
-			}).listen(0);
-		}
-
 		// make VS Code connect to debug server
-		return new vscode.DebugAdapterServer((this.server.address() as Net.AddressInfo).port);
+		return new vscode.DebugAdapterServer(63321);
 	}
 
 	dispose() {

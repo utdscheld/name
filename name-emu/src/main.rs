@@ -12,6 +12,8 @@ mod mips;
 use mips::{Mips, ExecutionErrors};
 
 use base64::{Engine as _, engine::general_purpose};
+use std::env;
+use std::net::TcpListener;
 
 #[derive(Error, Debug)]
 enum MyAdapterError {
@@ -62,16 +64,37 @@ type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 // }
 
 fn main() -> DynResult<()> {
+
+  let args_strings: Vec<String> = env::args().collect();
+
+  if args_strings.len() > 2 {
+      return Err("USAGE: name-emu [optional port number]".into());
+  }
   let log_path = std::path::Path::join(env::temp_dir().as_path(), "name_log.txt");
   let mut file = File::create(log_path)?;
   file.write_all(b"NAME Development Log\n")?;
 
 
+  let (in_port, out_port): (Box<dyn std::io::Read>, Box<dyn std::io::Write>) = if let Some(port_string) = args_strings.get(1) {
+    if let Ok(port_number) = port_string.parse::<u32>() {
 
-  let input = BufReader::new(std::io::stdin());
+      let listener = TcpListener::bind(format!("127.0.0.1:{}", port_number)).unwrap();
+
+      let (stream, _) = listener.accept().unwrap();
+
+      // let stream = std::rc::Rc::new(stream);
+      (Box::new(stream.try_clone().unwrap()), Box::new(stream))
+    }
+    else {
+      (Box::new(std::io::stdin()), Box::new(std::io::stdout()))
+    }
+  }
+  else {
+    (Box::new(std::io::stdin()), Box::new(std::io::stdout()))
+  };
 
 
-  let mut server = Server::new(input, output);
+  let mut server = Server::new(BufReader::new(in_port), BufWriter::new(out_port));
 
   let capabilities = types::Capabilities {
     supports_configuration_done_request: Some(true),
