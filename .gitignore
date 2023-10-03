@@ -8,7 +8,6 @@ name-as/target
 name-as/Cargo.lock
 .obsidian
 *.vsix
-.vscode/*
 target/*
 Cargo.lock
 package-lock.json
@@ -19,8 +18,6 @@ package-lock.json
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
-
-.vscode/*
 
 *.asm
 *.out
