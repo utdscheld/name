@@ -258,7 +258,7 @@ loop {
       server.respond(rsp)?;
     }
     
-    Command::Next(_) => {
+    Command::Next(_) | Command::StepIn(_) => {
       
       let result = mips.step_one(&mut file);
       let stopped_event_body = match result {
