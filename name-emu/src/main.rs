@@ -379,7 +379,7 @@ loop {
           scopes: vec![
             Scope {
               name: "Registers".to_string(),
-              presentation_hint: None,
+              presentation_hint: Some(types::ScopePresentationhint::Registers),
               // Notably, the magic 1001 is the only variables reference in this program. It can get the registers
               // I'll probably want a second/third reference for floats etc.
               variables_reference: 1001,
@@ -408,8 +408,8 @@ loop {
         for (i, reg) in mips.regs.iter().enumerate() {
           registers.push(
             Variable {
-              name: format!("${}", i),
-              value: reg.to_string(),
+              name: mips::REGISTER_NAMES[i].to_string(),
+              value: format!("0x{:X}", reg),
               type_field: None,
               presentation_hint: None,
               evaluate_name: None, // But I'm sure this should be something
@@ -420,6 +420,19 @@ loop {
             }
           );
         }
+        registers.push(
+          Variable {
+            name: mips::PC_NAME.to_string(),
+            value:format!("0x{:X}", mips.pc),
+            type_field: None,
+            presentation_hint: None,
+            evaluate_name: None, // But I'm sure this should be something
+            variables_reference: 0, // Apparently I should make this 0 for non-nested structs
+            named_variables: Some(0),
+            indexed_variables: Some(0),
+            memory_reference: None // I think this would be neat to implement...
+          }
+        );
       }
 
       let rsp = req.success(
