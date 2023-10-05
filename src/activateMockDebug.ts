@@ -9,7 +9,6 @@
 
 import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
-import { MockDebugSession } from './mockDebug';
 import { FileAccessor } from './mockRuntime';
 
 export function activateMockDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
@@ -204,13 +203,6 @@ function pathToUri(path: string) {
 		return vscode.Uri.file(path);
 	} catch (e) {
 		return vscode.Uri.parse(path);
-	}
-}
-
-class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
-
-	createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
-		return new vscode.DebugAdapterInlineImplementation(new MockDebugSession(workspaceFileAccessor));
 	}
 }
 
