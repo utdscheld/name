@@ -9,6 +9,42 @@ pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
 const LEN_TEXT_INITIAL: usize = 200;
 
+pub const REGISTER_NAMES: [&str; 32] = [
+    "$zero",
+    "$at",
+    "$v0",
+    "$v1",
+    "$a0",
+    "$a1",
+    "$a2",
+    "$a3",
+    "$t0",
+    "$t1",
+    "$t2",
+    "$t3",
+    "$t4",
+    "$t5",
+    "$t6",
+    "$t7",
+    "$s0",
+    "$s1",
+    "$s2",
+    "$s3",
+    "$s4",
+    "$s5",
+    "$s6",
+    "$s7",
+    "$t8",
+    "$t9",
+    "$k0",
+    "$k1",
+    "$gp",
+    "$sp",
+    "$fp",
+    "$ra"
+];
+pub const PC_NAME: &str = "$pc";
+
 #[derive(Debug)]
 enum BranchDelays {
     NotActive,
