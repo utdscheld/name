@@ -147,7 +147,7 @@ impl Mips {
             }
             // Set Less Than
             0x2A => {
-                if (self.regs[ins.rt] as i32) < (self.regs[ins.rs] as i32) {
+                if (self.regs[ins.rs] as i32) < (self.regs[ins.rt] as i32) {
                     self.regs[ins.rd] = 1;
                 }
                 else {
@@ -188,7 +188,7 @@ impl Mips {
             // If rs is less than sign-extended 16-bit immediate using unsigned comparison, then set rt to 1
             // casting is to sign extend again
             0xB => {
-                if self.regs[ins.rs] < ins.imm as i16 as i32 as u32 {
+                if self.regs[ins.rs] < (ins.imm as i16 as i32 as u32) {
                     self.regs[ins.rt] = 1;
                 }
                 else {
