@@ -1,34 +1,71 @@
-// A launch configuration that compiles the extension and then opens it inside a new window
-// Use IntelliSense to learn about possible attributes.
-// Hover to view descriptions of existing attributes.
-// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
 {
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "Run Extension",
-			"type": "extensionHost",
-			"request": "launch",
-			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}"
-			],
-			"outFiles": [
-				"${workspaceFolder}/dist/**/*.js"
-			],
-		},
-		{
-			"name": "Extension Tests",
+			"name": "Extension",
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
 				"--extensionDevelopmentPath=${workspaceFolder}",
-				"--extensionTestsPath=${workspaceFolder}/out/test/suite/index"
+				"${workspaceFolder}/sampleWorkspace"
 			],
 			"outFiles": [
-				"${workspaceFolder}/out/**/*.js",
 				"${workspaceFolder}/dist/**/*.js"
 			],
-			"preLaunchTask": "tasks: watch-tests"
+			"preLaunchTask": "npm: watch"
+		},
+		{
+			"name": "Web Extension",
+			"type": "extensionHost",
+			"debugWebWorkerHost": true,
+			"request": "launch",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}",
+				"--extensionDevelopmentKind=web",
+				"${workspaceFolder}/sampleWorkspace"
+			],
+			"outFiles": [
+				"${workspaceFolder}/dist/**/*.js"
+			],
+			"preLaunchTask": "npm: watch web"
+		},
+		{
+			"name": "Server",
+			"type": "node",
+			"request": "launch",
+			"cwd": "${workspaceFolder}",
+			"program": "${workspaceFolder}/src/debugAdapter.ts",
+			"args": [
+				"--server=4711"
+			],
+			"outFiles": [
+				"${workspaceFolder}/out/**/*.js"
+			],
+			"preLaunchTask": "npm: compile"
+		},
+		{
+			"name": "Tests",
+			"type": "node",
+			"request": "launch",
+			"cwd": "${workspaceFolder}",
+			"program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+			"args": [
+				"-u", "tdd",
+				"--timeout", "999999",
+				"--colors",
+				"./out/tests/"
+			],
+			"outFiles": [
+				"${workspaceFolder}/out/**/*.js"
+			],
+			"internalConsoleOptions": "openOnSessionStart",
+			"preLaunchTask": "npm: compile"
+		}
+	],
+	"compounds": [
+		{
+			"name": "Extension + Server",
+			"configurations": [ "Extension", "Server" ]
 		}
 	]
 }
