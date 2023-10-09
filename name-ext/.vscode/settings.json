@@ -10,5 +10,6 @@
     "typescript.tsc.autoDetect": "off",
 
     "git.branchProtection": ["main"],
-    "git.branchProtectionPrompt": "alwaysCommitToNewBranch"
+    "git.branchProtectionPrompt": "alwaysCommitToNewBranch",
+    "cmake.configureOnOpen": false
 }
