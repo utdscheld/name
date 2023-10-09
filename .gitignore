@@ -19,3 +19,4 @@ Cargo.lock
 *.out
 *.o
 !name-as/.artifacts/*
+name-fmt/node_modules/
