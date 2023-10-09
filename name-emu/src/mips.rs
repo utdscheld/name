@@ -2,16 +2,57 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::fmt;
 use std::io::Cursor;
 
+use std::fs::File;
+use std::io::Write;
+
 pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
 const LEN_TEXT_INITIAL: usize = 200;
 
+pub const REGISTER_NAMES: [&str; 32] = [
+    "$zero",
+    "$at",
+    "$v0",
+    "$v1",
+    "$a0",
+    "$a1",
+    "$a2",
+    "$a3",
+    "$t0",
+    "$t1",
+    "$t2",
+    "$t3",
+    "$t4",
+    "$t5",
+    "$t6",
+    "$t7",
+    "$s0",
+    "$s1",
+    "$s2",
+    "$s3",
+    "$s4",
+    "$s5",
+    "$s6",
+    "$s7",
+    "$t8",
+    "$t9",
+    "$k0",
+    "$k1",
+    "$gp",
+    "$sp",
+    "$fp",
+    "$ra"
+];
+pub const PC_NAME: &str = "$pc";
+
+#[derive(Debug)]
 enum BranchDelays {
     NotActive,
     Set,
     Ready
 }
 
+#[derive(Debug)]
 pub(crate) struct Mips {
     pub regs: [u32; 32],
     pub floats: [f32; 32],
@@ -64,16 +105,17 @@ impl Default for Mips {
             floats: [0f32; 32],
             mult_hi: 0,
             mult_lo: 0,
-            pc: 0x00400000,
+            pc: DOT_TEXT_START_ADDRESS as usize,
             branch_delay_target: 0,
             branch_delay_status: BranchDelays::NotActive,
             memories: vec![
-                (Vec::with_capacity(LEN_TEXT_INITIAL), DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
+                (vec![0; LEN_TEXT_INITIAL], DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
             ]
         }
     }
 }
 
+#[derive(Debug)]
 struct Rtype {
     rs: usize,
     rt: usize,
@@ -82,6 +124,7 @@ struct Rtype {
     funct: u8
 }
 
+#[derive(Debug)]
 struct Itype {
     opcode: u32,
     rs: usize,
@@ -89,6 +132,7 @@ struct Itype {
     imm: u16
 }
 
+#[derive(Debug)]
 struct Jtype {
     opcode: u32,
     dest: u32
@@ -97,6 +141,7 @@ struct Jtype {
 // struct Jtype
 // struct Ftype
 
+#[derive(Debug)]
 enum Instructions {
     R(Rtype),
     I(Itype),
@@ -133,9 +178,26 @@ impl Mips {
                     None => {return Err(ExecutionErrors::IntegerOverflow);}
                 }
             }
+            // Or
+            0x25 => {
+                self.regs[ins.rd] = self.regs[ins.rt] | self.regs[ins.rs];
+            }
             // Xor
             0x26 => {
                 self.regs[ins.rd] = self.regs[ins.rt] ^ self.regs[ins.rs];
+            }
+            // Nor
+            0x27 => {
+                self.regs[ins.rd] = !(self.regs[ins.rt] | self.regs[ins.rs]);
+            }
+            // Set Less Than
+            0x2A => {
+                if self.regs[ins.rt] < self.regs[ins.rs] {
+                    self.regs[ins.rd] = 1;
+                }
+                else {
+                    self.regs[ins.rd] = 0;
+                }
             }
             _ => return Err(ExecutionErrors::UndefinedInstruction)
         }
@@ -146,6 +208,20 @@ impl Mips {
         let memory_address = (ins.rt as i64 + (ins.imm as i64)) as u32;
 
         match ins.opcode {
+            // Set Less Than Immediate (signed)
+            // Forcing sign extend through a series of casts. See load byte comments
+            0xA => {
+                if self.regs[ins.rs] < ins.imm as i8 as i32 as u32 {
+                    self.regs[ins.rt] = 1;
+                }
+                else {
+                    self.regs[ins.rt] = 0;
+                }
+            }
+            // // Set Less Than 
+            // 0xB => {
+            //     if 
+            // }
             // Or Immediate
             0xD => {
                 // Rust zero-extends unsigned values when up-casting
@@ -240,7 +316,7 @@ impl Mips {
     }
 
     fn decode(&self, instruction: u32) -> Instructions {
-        let opcode = instruction >> 25 & 0b111111;
+        let opcode = instruction >> 26 & 0b111111;
         match opcode {
             // R-type
             0 => {
@@ -343,10 +419,11 @@ impl Mips {
         Ok(())
     }
 
-    pub fn step_one(&mut self) -> Result<(), ExecutionErrors> {
+    pub fn step_one(&mut self, mut f :&mut File) -> Result<(), ExecutionErrors> {
         let opcode = self.read_w(self.pc as u32)?;
-        self.pc += 1;
+        self.pc += 4;
         let instruction = self.decode(opcode);
+        writeln!(f,"{:?}", instruction);
 
         let ins_result = match instruction {
             Instructions::R(rtype) => self.dispatch_r(rtype),

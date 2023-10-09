@@ -1,2 +1,2 @@
 config_name = "Default MIPS"
-as_cmd = ""
+as_cmd = []

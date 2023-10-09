@@ -9,7 +9,20 @@ name-as/Cargo.lock
 .obsidian
 *.vsix
 target/*
+out
+dist
+node_modules/
+.vscode-test/
+name-emu/target
+name-emu/Cargo.lock
+name-as/target
+name-as/Cargo.lock
+.obsidian
+*.vsix
+target/*
 Cargo.lock
+package-lock.json
+.eslistrc.json
 package-lock.json
 .eslistrc.json
 
@@ -23,7 +36,6 @@ package-lock.json
 *.out
 *.o
 !.artifacts
-
 mock_debug/out
 mock_debug/dist
 mock_debug/node_modules
