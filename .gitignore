@@ -22,4 +22,4 @@ package-lock.json
 *.asm
 *.out
 *.o
-!.artifacts
+!name-as/.artifacts/*
