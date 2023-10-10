@@ -7,12 +7,22 @@ use std::fs::File;
 use std::io::Write;
 use std::str;
 
-fn mask_u8(n: u8, x: u8) -> u8 {
-    n & ((1 << x) - 1)
+fn mask_u8(n: u8, x: u8) -> Result<u8, &'static str> {
+    let out = n & ((1 << x) - 1);
+    if out != n {
+        Err("Masking error")
+    } else {
+        Ok(out)
+    }
 }
 
-fn mask_u32(n: u32, x: u8) -> u32 {
-    n & ((1 << x) - 1)
+fn mask_u32(n: u32, x: u8) -> Result<u32, &'static str> {
+    let out = n & ((1 << x) - 1);
+    if out != n {
+        Err("Masking error")
+    } else {
+        Ok(out)
+    }
 }
 
 const TEXT_ADDRESS_BASE: u32 = 0x400000;
@@ -158,20 +168,13 @@ fn j_operation(mnemonic: &str) -> Result<J, &'static str> {
 
 /// Write a u32 into a file, zero-padded to 32 bits (4 bytes)
 pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
-    fn convert_endianness(input: u32) -> u32 {
-        ((input & 0x000000FF) << 24)
-            | ((input & 0x0000FF00) << 8)
-            | ((input & 0x00FF0000) >> 8)
-            | ((input & 0xFF000000) >> 24)
-    }
-
     const PADDED_LENGTH: usize = 4;
 
     // Create a 4-length buffer
     let mut padded_buffer: [u8; PADDED_LENGTH] = [0; PADDED_LENGTH];
 
     // Convert data into bytes
-    let bytes: [u8; PADDED_LENGTH] = (convert_endianness(data)).to_be_bytes();
+    let bytes: [u8; PADDED_LENGTH] = data.to_be_bytes();
 
     // Copy bytes into buffer at offset s.t. value is left-padded with 0s
     let copy_index = PADDED_LENGTH - bytes.len();
@@ -280,11 +283,11 @@ fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
     let mut funct = r_struct.funct;
 
     // Mask
-    rs = mask_u8(rs, 5);
-    rt &= mask_u8(rt, 5);
-    rd &= mask_u8(rd, 5);
-    shamt &= mask_u8(shamt, 5);
-    funct &= mask_u8(funct, 6);
+    rs = mask_u8(rs, 5)?;
+    rt &= mask_u8(rt, 5)?;
+    rd &= mask_u8(rd, 5)?;
+    shamt &= mask_u8(shamt, 5)?;
+    funct &= mask_u8(funct, 6)?;
 
     // opcode : 31 - 26
     let mut result = 0x000000;
@@ -373,11 +376,11 @@ fn assemble_i(
 
     // Mask
     println!("Masking rs");
-    rs = mask_u8(rs, 5);
+    rs = mask_u8(rs, 5)?;
     println!("Masking rt");
-    rt = mask_u8(rt, 5);
+    rt = mask_u8(rt, 5)?;
     println!("Masking opcode");
-    opcode = mask_u8(opcode, 6);
+    opcode = mask_u8(opcode, 6)?;
     // No need to mask imm, it's already a u16
 
     // opcode : 31 - 26
@@ -416,7 +419,7 @@ fn assemble_j(
     let jump_address: u32 = labels[j_args[0]];
     println!("Masking jump address");
     println!("Jump address original: {}", jump_address);
-    let mut masked_jump_address = mask_u32(jump_address, 28);
+    let mut masked_jump_address = mask_u32(jump_address, 28)?;
     println!("Jump address masked: {}", masked_jump_address);
     if jump_address != masked_jump_address {
         return Err("Tried to assemble illegal jump address");
@@ -429,7 +432,7 @@ fn assemble_j(
 
     // Mask
     println!("Masking opcode");
-    opcode = mask_u8(opcode, 6);
+    opcode = mask_u8(opcode, 6)?;
     // No need to mask imm, it's already a u16
 
     // opcode : 31 - 26

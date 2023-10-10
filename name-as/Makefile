@@ -25,7 +25,9 @@ run-gnu: build
 
 test: run
 	$(CARGO) run $(GNUCFG) $(INPUT) gnu-output.o
-	md5sum .artifacts/mars_output.o $(OUTPUT) gnu-output.o
+	# Switch endianness for comparison with MARS
+	hexdump -v -e '1/4 "%08x"' -e '"\n"' $(OUTPUT) | xxd -r -p > $(OUTPUT).end
+	md5sum .artifacts/mars_output.o $(OUTPUT).end gnu-output.o
 
 clean:
 	$(CARGO) clean
