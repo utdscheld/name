@@ -2,16 +2,15 @@
  * Copyright (C) Microsoft Corporation. All rights reserved.
  *--------------------------------------------------------*/
 /*
- * activateMockDebug.ts containes the shared extension code that can be executed both in node.js and the browser.
+ * activateNameDebug.ts containes the shared extension code that can be executed both in node.js and the browser.
  */
 
 'use strict';
 
 import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
-import { FileAccessor } from './mockRuntime';
 
-export function activateMockDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
+export function activateNameDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('extension.vsname.runEditorContents', (resource: vscode.Uri) => {
@@ -61,7 +60,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}));
 
 	// register a configuration provider for 'vsname' debug type
-	const provider = new MockConfigurationProvider();
+	const provider = new NameConfigurationProvider();
 	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('vsname', provider));
 
 	// register a dynamic configuration provider for 'vsname' debug type
@@ -81,7 +80,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 					program: "${file}"
 				},
 				{
-					name: "Mock Launch",
+					name: "Name Launch",
 					request: "launch",
 					type: "vsname",
 					program: "${file}"
@@ -99,7 +98,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}
 
 	// override VS Code's default implementation of the debug hover
-	// here we match only Mock "variables", that are words starting with an '$'
+	// here we match only Name "variables", that are words starting with an '$'
 	context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('mips-assembly', {
 		provideEvaluatableExpression(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.EvaluatableExpression> {
 
@@ -151,7 +150,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}));
 }
 
-class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
+class NameConfigurationProvider implements vscode.DebugConfigurationProvider {
 
 	/**
 	 * Massage a debug configuration just before a debug session is being launched,
@@ -178,31 +177,6 @@ class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
 		}
 
 		return config;
-	}
-}
-
-export const workspaceFileAccessor: FileAccessor = {
-	isWindows: typeof process !== 'undefined' && process.platform === 'win32',
-	async readFile(path: string): Promise<Uint8Array> {
-		let uri: vscode.Uri;
-		try {
-			uri = pathToUri(path);
-		} catch (e) {
-			return new TextEncoder().encode(`cannot read '${path}'`);
-		}
-
-		return await vscode.workspace.fs.readFile(uri);
-	},
-	async writeFile(path: string, contents: Uint8Array) {
-		await vscode.workspace.fs.writeFile(pathToUri(path), contents);
-	}
-};
-
-function pathToUri(path: string) {
-	try {
-		return vscode.Uri.file(path);
-	} catch (e) {
-		return vscode.Uri.parse(path);
 	}
 }
 
