@@ -2,16 +2,15 @@
  * Copyright (C) Microsoft Corporation. All rights reserved.
  *--------------------------------------------------------*/
 /*
- * activateMockDebug.ts containes the shared extension code that can be executed both in node.js and the browser.
+ * activateNameDebug.ts containes the shared extension code that can be executed both in node.js and the browser.
  */
 
 'use strict';
 
 import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
-import { FileAccessor } from './mockRuntime';
 
-export function activateMockDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
+export function activateNameDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('extension.vsname.runEditorContents', (resource: vscode.Uri) => {
@@ -61,7 +60,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}));
 
 	// register a configuration provider for 'vsname' debug type
-	const provider = new MockConfigurationProvider();
+	const provider = new NameConfigurationProvider();
 	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('vsname', provider));
 
 	// register a dynamic configuration provider for 'vsname' debug type
@@ -81,7 +80,7 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 					program: "${file}"
 				},
 				{
-					name: "Mock Launch",
+					name: "Name Launch",
 					request: "launch",
 					type: "vsname",
 					program: "${file}"
@@ -99,21 +98,11 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 	}
 
 	// override VS Code's default implementation of the debug hover
-	// here we match only Mock "variables", that are words starting with an '$'
 	context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('mips-assembly', {
 		provideEvaluatableExpression(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.EvaluatableExpression> {
 
-			const VARIABLE_REGEXP = /\$[a-z][a-z0-9]*/ig;
-			const line = document.lineAt(position.line).text;
-
-			let m: RegExpExecArray | null;
-			while (m = VARIABLE_REGEXP.exec(line)) {
-				const varRange = new vscode.Range(position.line, m.index, position.line, m.index + m[0].length);
-
-				if (varRange.contains(position)) {
-					return new vscode.EvaluatableExpression(varRange);
-				}
-			}
+			// We should provide the ability to hover over things and look them up here.
+			// This is a fairly complex undertaking, so let's hold off on it for now
 			return undefined;
 		}
 	}));
@@ -125,33 +114,14 @@ export function activateMockDebug(context: vscode.ExtensionContext, factory?: vs
 
 			const allValues: vscode.InlineValue[] = [];
 
-			for (let l = viewport.start.line; l <= context.stoppedLocation.end.line; l++) {
-				const line = document.lineAt(l);
-				var regExp = /\$([a-z][a-z0-9]*)/ig;	// variables are words starting with '$'
-				do {
-					var m = regExp.exec(line.text);
-					if (m) {
-						const varName = m[1];
-						const varRange = new vscode.Range(l, m.index, l, m.index + varName.length);
-
-						// some literal text
-						//allValues.push(new vscode.InlineValueText(varRange, `${varName}: ${viewport.start.line}`));
-
-						// value found via variable lookup
-						allValues.push(new vscode.InlineValueVariableLookup(varRange, varName, false));
-
-						// value determined via expression evaluation
-						//allValues.push(new vscode.InlineValueEvaluatableExpression(varRange, varName));
-					}
-				} while (m);
-			}
+			// This is where we will provide more info on pseudo-ops.
 
 			return allValues;
 		}
 	}));
 }
 
-class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
+class NameConfigurationProvider implements vscode.DebugConfigurationProvider {
 
 	/**
 	 * Massage a debug configuration just before a debug session is being launched,
@@ -178,31 +148,6 @@ class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
 		}
 
 		return config;
-	}
-}
-
-export const workspaceFileAccessor: FileAccessor = {
-	isWindows: typeof process !== 'undefined' && process.platform === 'win32',
-	async readFile(path: string): Promise<Uint8Array> {
-		let uri: vscode.Uri;
-		try {
-			uri = pathToUri(path);
-		} catch (e) {
-			return new TextEncoder().encode(`cannot read '${path}'`);
-		}
-
-		return await vscode.workspace.fs.readFile(uri);
-	},
-	async writeFile(path: string, contents: Uint8Array) {
-		await vscode.workspace.fs.writeFile(pathToUri(path), contents);
-	}
-};
-
-function pathToUri(path: string) {
-	try {
-		return vscode.Uri.file(path);
-	} catch (e) {
-		return vscode.Uri.parse(path);
 	}
 }
 
