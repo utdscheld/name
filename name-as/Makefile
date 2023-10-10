@@ -9,7 +9,7 @@ CARGO := cargo
 CONFIG := configs/default.toml
 GNUCFG := configs/mips-linux-gnu-as.toml
 INPUT := .artifacts/mips_test.asm
-OUTPUT := .artifacts/mips_test.o
+OUTPUT := output.o
 
 fmt:
 	$(CARGO) fmt
@@ -24,15 +24,14 @@ run-gnu: build
 	$(CARGO) run $(GNUCFG) $(INPUT) $(OUTPUT)
 
 test: run
-	$(CARGO) run $(GNUCFG) $(INPUT) gnu-output.o
-	# Switch endianness for comparison with MARS
-	hexdump -v -e '1/4 "%08x"' -e '"\n"' $(OUTPUT) | xxd -r -p > $(OUTPUT).end
-	md5sum .artifacts/mars_output.o $(OUTPUT).end gnu-output.o
+	$(CARGO) run $(GNUCFG) $(INPUT) gnu-$(OUTPUT)
+	md5sum $(OUTPUT) gnu-$(OUTPUT)
 
 clean:
 	$(CARGO) clean
 	rm -f $(BUILD_DIR)/$(BINARY_NAME)
 	git clean -Xf
+
 
 
 # Set the default rule to build and run the program
