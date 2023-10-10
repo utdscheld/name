@@ -146,23 +146,12 @@ impl Mips {
                 self.regs[ins.rd] = !(self.regs[ins.rt] | self.regs[ins.rs]);
             }
             // Set Less Than
-            0x2A => {
-                if (self.regs[ins.rs] as i32) < (self.regs[ins.rt] as i32) {
-                    self.regs[ins.rd] = 1;
-                }
-                else {
-                    self.regs[ins.rd] = 0;
-                }
+            0x2A => { 
+                self.regs[ins.rd] = if (self.regs[ins.rs] as i32) < (self.regs[ins.rt] as i32) { 1 } else { 0 };
             }
             // Set on Less Than Unsigned
-            // If rt < rs using unsigned comparison, then rd = 1
-            0x2B => {
-                if self.regs[ins.rt] < self.regs[ins.rs] {
-                    self.regs[ins.rd] = 1;
-                }
-                else {
-                    self.regs[ins.rd] = 0;
-                }
+            0x2B => { 
+                self.regs[ins.rd] = if self.regs[ins.rs] < self.regs[ins.rt] { 1 } else { 0 };
             }
             _ => return Err(ExecutionErrors::UndefinedInstruction)
         }
@@ -176,24 +165,14 @@ impl Mips {
             // Set on Less Than Immediate (signed)
             // If rs is less than sign-extended 16 bit immediate using signed comparison, then set rt to 1
             // Casting on imm is to sign extend. See load byte casts
-            0xA => {
-                if (self.regs[ins.rs] as i32) < (ins.imm as i16 as i32) { 
-                    self.regs[ins.rt] = 1;
-                }
-                else {
-                    self.regs[ins.rt] = 0;
-                }
+            0xA => { 
+                self.regs[ins.rt] = if (self.regs[ins.rs] as i32) < (ins.imm as i16 as i32) { 1 } else { 0 };
             }
             // Set on Less Than Immediate (unsigned)
             // If rs is less than sign-extended 16-bit immediate using unsigned comparison, then set rt to 1
             // casting is to sign extend again
-            0xB => {
-                if self.regs[ins.rs] < (ins.imm as i16 as i32 as u32) {
-                    self.regs[ins.rt] = 1;
-                }
-                else {
-                    self.regs[ins.rt] = 0;
-                }
+            0xB => { 
+                self.regs[ins.rt] = if self.regs[ins.rs] < (ins.imm as i16 as i32 as u32) { 1 } else { 0 };
             }
             // Or Immediate
             0xD => {
