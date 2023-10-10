@@ -20,7 +20,6 @@ const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 /// The form of an R-type instruction, specificially
 /// which arguments it expects in which order
 enum RForm {
-    None,
     RdRsRt,
     RdRtShamt,
 }
@@ -35,7 +34,6 @@ pub struct R {
 /// The form of an I-type instruction, specifically
 /// which arguments it expects in which order
 enum IForm {
-    None,
     RtImm,
     RtImmRs,
     RtRsImm,
@@ -279,7 +277,7 @@ fn enforce_length(arr: &Vec<&str>, len: usize) -> Result<u32, &'static str> {
 }
 
 /// Assembles an R-type instruction
-fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> {
+fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
     let mut rs: u8;
     let mut rt: u8;
     let mut rd: u8;
@@ -297,13 +295,12 @@ fn assemble_r(r_struct: &mut R, r_args: Vec<&str>) -> Result<u32, &'static str> 
             enforce_length(&r_args, 4)?;
             rd = assemble_reg(r_args[1])?;
             rs = 0;
-            rt = assemble_reg(r_args[2])?;
-            shamt = match r_args[3].parse::<u8>() {
+            rt = assemble_reg(r_args[1])?;
+            shamt = match r_args[2].parse::<u8>() {
                 Ok(v) => v,
                 Err(_) => return Err("Failed to parse shamt"),
             }
         }
-        _ => return Err("Unexpected R_form"),
     };
 
     let mut funct = r_struct.funct;
@@ -356,14 +353,14 @@ fn assemble_i(
 ) -> Result<u32, &'static str> {
     let mut rs: u8;
     let mut rt: u8;
-    let mut imm: u16;
+    let imm: u16;
 
     match i_struct.form {
         IForm::RtImm => {
             enforce_length(&i_args, 3)?;
             rs = 0;
-            rt = assemble_reg(i_args[1])?;
-            imm = match i_args[2].parse::<u16>() {
+            rt = assemble_reg(i_args[0])?;
+            imm = match i_args[1].parse::<u16>() {
                 Ok(v) => v,
                 Err(_) => return Err("Failed to parse imm"),
             }
@@ -548,9 +545,19 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     let mut j_struct = J { opcode: 0 };
     let mut args: Vec<&str> = Vec::new();
 
-    // Iterate over all tokens
-    while !tokens.is_empty() {
-        let token = tokens.remove(0);
+    // Assign addresses to labels
+    let mut current_addr: u32 = TEXT_ADDRESS_BASE;
+    let mut labels: HashMap<&str, u32> = HashMap::new();
+    for sub_cst in &vernac_sequence {
+        match sub_cst {
+            MipsCST::Label(label_str) => {
+                println!("Inserting label {} at {:x}", label_str, current_addr);
+                labels.insert(label_str, current_addr);
+                continue;
+            }
+            MipsCST::Instruction(_, _) => (),
+            MipsCST::Sequence(_) => unreachable!(),
+        };
 
         // Scan tokens in
         match state {
