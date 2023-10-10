@@ -98,21 +98,12 @@ export function activateNameDebug(context: vscode.ExtensionContext, factory?: vs
 	}
 
 	// override VS Code's default implementation of the debug hover
-	// here we match only Name "variables", that are words starting with an '$'
 	context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('mips-assembly', {
 		provideEvaluatableExpression(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.EvaluatableExpression> {
 
-			const VARIABLE_REGEXP = /\$[a-z][a-z0-9]*/ig;
-			const line = document.lineAt(position.line).text;
-
-			let m: RegExpExecArray | null;
-			while (m = VARIABLE_REGEXP.exec(line)) {
-				const varRange = new vscode.Range(position.line, m.index, position.line, m.index + m[0].length);
-
-				if (varRange.contains(position)) {
-					return new vscode.EvaluatableExpression(varRange);
-				}
-			}
+			// This is where we'll provide debug hovering for... everything. This
+			// will be a lengthy implementation and is also low-priority, so leave
+			// it alone for now
 			return undefined;
 		}
 	}));
@@ -124,26 +115,8 @@ export function activateNameDebug(context: vscode.ExtensionContext, factory?: vs
 
 			const allValues: vscode.InlineValue[] = [];
 
-			for (let l = viewport.start.line; l <= context.stoppedLocation.end.line; l++) {
-				const line = document.lineAt(l);
-				var regExp = /\$([a-z][a-z0-9]*)/ig;	// variables are words starting with '$'
-				do {
-					var m = regExp.exec(line.text);
-					if (m) {
-						const varName = m[1];
-						const varRange = new vscode.Range(l, m.index, l, m.index + varName.length);
-
-						// some literal text
-						//allValues.push(new vscode.InlineValueText(varRange, `${varName}: ${viewport.start.line}`));
-
-						// value found via variable lookup
-						allValues.push(new vscode.InlineValueVariableLookup(varRange, varName, false));
-
-						// value determined via expression evaluation
-						//allValues.push(new vscode.InlineValueEvaluatableExpression(varRange, varName));
-					}
-				} while (m);
-			}
+			// Here is where we'll likely provide a hover view for pseudo-ops.
+			// Actually doing this will require some thought.
 
 			return allValues;
 		}
