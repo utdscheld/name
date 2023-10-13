@@ -24,7 +24,10 @@ enum MyAdapterError {
   MissingCommandError,
 
   #[error("Command argument error")]
-  CommandArgumentError
+  CommandArgumentError,
+  
+  #[error("Argument parsing error")]
+  ArgumentParsingError
 }
 
 type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -63,11 +66,9 @@ type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 //     }
 // }
 
-fn reset_mips() -> Mips {
+fn reset_mips(program_data: &[u8]) -> Mips {
   // Reset execution and begin again.
-  let mut mips: Mips = Default::default();
-
-  let program_data = std::fs::read("/home/qwe/Documents/CS4485/name/name-as/output.o").unwrap();
+  let mut mips: Mips = Default::default();  
 
   for (i, byte) in program_data.iter().enumerate() {
     mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
@@ -80,30 +81,43 @@ fn main() -> DynResult<()> {
 
   let args_strings: Vec<String> = env::args().collect();
 
-  if args_strings.len() > 2 {
-      return Err("USAGE: name-emu [optional port number]".into());
+  if args_strings.len() != 4 {
+      return Err("USAGE: name-emu [port number] [source file] [object file]".into());
   }
   let log_path = std::path::Path::join(env::temp_dir().as_path(), "name_log.txt");
   let mut file = File::create(log_path)?;
   file.write_all(b"NAME Development Log\n")?;
 
 
-  let (in_port, out_port): (Box<dyn std::io::Read>, Box<dyn std::io::Write>) = if let Some(port_string) = args_strings.get(1) {
-    if let Ok(port_number) = port_string.parse::<u32>() {
+  let port_string = args_strings.get(1).unwrap();
+  
+  let (in_port, out_port) = if let Ok(port_number) = port_string.parse::<u32>() {
 
-      let listener = TcpListener::bind(format!("127.0.0.1:{}", port_number)).unwrap();
+      if let Ok(listener) = TcpListener::bind(format!("127.0.0.1:{}", port_number)) {
 
-      let (stream, _) = listener.accept().unwrap();
+        let (stream, _) = listener.accept().unwrap();
 
-      // let stream = std::rc::Rc::new(stream);
-      (Box::new(stream.try_clone().unwrap()), Box::new(stream))
-    }
-    else {
-      (Box::new(std::io::stdin()), Box::new(std::io::stdout()))
-    }
+        // let stream = std::rc::Rc::new(stream);
+        (Box::new(stream.try_clone().unwrap()), Box::new(stream))
+      }
+      else {
+        println!("Failed to bind port {}", port_number);
+        return Err(Box::new(MyAdapterError::ArgumentParsingError));
+      }
   }
   else {
-    (Box::new(std::io::stdin()), Box::new(std::io::stdout()))
+    println!("Failed to parse port number");
+    return Err(Box::new(MyAdapterError::ArgumentParsingError));
+  };
+
+  let program_name = args_strings.get(2).unwrap();
+
+  let program_data = match std::fs::read(args_strings.get(3).unwrap()) {
+    Ok(program_data) => program_data,
+    Err(why) => {
+      println!("Failed to open provided object file. Reason: {}", why);
+      return Err(Box::new(MyAdapterError::ArgumentParsingError));      
+    }
   };
 
 
@@ -170,7 +184,7 @@ loop {
   
       server.send_event(Event::Initialized)?;
 
-      mips = reset_mips();
+      mips = reset_mips(&program_data);
 
     }
 
@@ -345,20 +359,7 @@ loop {
           StackFrame{
             id: 0,
             name: "mips".to_string(),
-            source: Some(Source { name: Some("/home/qwe/Documents/CS4485/name/mips_test.asm".to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
-            line: 1,
-            column: 0,
-            end_line: None,
-            end_column: None,
-            can_restart: None,
-            instruction_pointer_reference: None,
-            module_id: None,
-            presentation_hint: None
-          },
-          StackFrame{
-            id: 1,
-            name: "mips2".to_string(),
-            source: Some(Source { name: Some("/home/qwe/Documents/CS4485/name/mips_test.asm".to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
+            source: Some(Source { name: Some(program_name.to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
             line: 1,
             column: 0,
             end_line: None,
@@ -442,7 +443,7 @@ loop {
     }
 
     Command::Restart(_) => {
-      mips = reset_mips();
+      mips = reset_mips(&program_data);
 
       let rsp = req.success(
         ResponseBody::Restart
