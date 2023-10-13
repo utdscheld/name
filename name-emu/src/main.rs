@@ -73,6 +73,7 @@ fn reset_mips(program_data: &[u8]) -> Mips {
   for (i, byte) in program_data.iter().enumerate() {
     mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
   }
+  mips.stop_address = mips::DOT_TEXT_START_ADDRESS as usize + program_data.len();
 
   mips
 }
@@ -306,6 +307,7 @@ loop {
       server.respond(rsp)?;
 
       if result == Err(ExecutionErrors::ProgramComplete) {
+        server.send_event(Event::Terminated(None))?;
         server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
       }
       else {

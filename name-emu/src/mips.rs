@@ -68,7 +68,10 @@ pub(crate) struct Mips {
 
     // A list of vectors of memory pools, their base addresses, and their
     // maximum lengths.
-    pub memories: Vec<(Vec<u8>, u32, u32)>
+    pub memories: Vec<(Vec<u8>, u32, u32)>,
+    // The end of the MIPS program. In NAME, the program terminates when no more instructions exist
+    // (as in, falling off the bottom is valid).
+    pub stop_address: usize
 }
 
 #[derive(Debug)]
@@ -110,7 +113,8 @@ impl Default for Mips {
             branch_delay_status: BranchDelays::NotActive,
             memories: vec![
                 (vec![0; LEN_TEXT_INITIAL], DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
-            ]
+            ],
+            stop_address: DOT_TEXT_START_ADDRESS as usize
         }
     }
 }
@@ -422,6 +426,11 @@ impl Mips {
     pub fn step_one(&mut self, mut f :&mut File) -> Result<(), ExecutionErrors> {
         let opcode = self.read_w(self.pc as u32)?;
         self.pc += 4;
+
+        if self.pc == self.stop_address {
+            return Err(ExecutionErrors::ProgramComplete);
+        }
+
         let instruction = self.decode(opcode);
         writeln!(f,"{:?}", instruction);
 
