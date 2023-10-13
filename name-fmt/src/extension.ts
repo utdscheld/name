@@ -12,7 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const editor = vscode.window.activeTextEditor;
 
 		// User configuration
-		const tabBoundaries = vscode.workspace.getConfiguration('nameFmt').get('tabBoundaries', [4, 4]);
+		const tabBoundaries = vscode.workspace.getConfiguration('nameFmt').get('tabBoundaries', [11, 18, 36]);
 
 		// Get the user-configured default tab position
         const defaultTabPosition = vscode.workspace.getConfiguration().get('editor.tabSize', 4);
