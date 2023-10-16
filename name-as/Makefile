@@ -30,6 +30,8 @@ test: run
 clean:
 	$(CARGO) clean
 	rm -f $(BUILD_DIR)/$(BINARY_NAME)
+	git clean -Xf
+
 
 
 # Set the default rule to build and run the program
