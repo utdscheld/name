@@ -191,13 +191,12 @@ impl Mips {
                 self.regs[ins.rd] = !(self.regs[ins.rt] | self.regs[ins.rs]);
             }
             // Set Less Than
-            0x2A => {
-                if self.regs[ins.rt] < self.regs[ins.rs] {
-                    self.regs[ins.rd] = 1;
-                }
-                else {
-                    self.regs[ins.rd] = 0;
-                }
+            0x2A => { 
+                self.regs[ins.rd] = if (self.regs[ins.rs] as i32) < (self.regs[ins.rt] as i32) { 1 } else { 0 };
+            }
+            // Set on Less Than Unsigned
+            0x2B => { 
+                self.regs[ins.rd] = if self.regs[ins.rs] < self.regs[ins.rt] { 1 } else { 0 };
             }
             _ => return Err(ExecutionErrors::UndefinedInstruction)
         }
@@ -208,20 +207,18 @@ impl Mips {
         let memory_address = (ins.rt as i64 + (ins.imm as i64)) as u32;
 
         match ins.opcode {
-            // Set Less Than Immediate (signed)
-            // Forcing sign extend through a series of casts. See load byte comments
-            0xA => {
-                if self.regs[ins.rs] < ins.imm as i8 as i32 as u32 {
-                    self.regs[ins.rt] = 1;
-                }
-                else {
-                    self.regs[ins.rt] = 0;
-                }
+            // Set on Less Than Immediate (signed)
+            // If rs is less than sign-extended 16 bit immediate using signed comparison, then set rt to 1
+            // Casting on imm is to sign extend. See load byte casts
+            0xA => { 
+                self.regs[ins.rt] = if (self.regs[ins.rs] as i32) < (ins.imm as i16 as i32) { 1 } else { 0 };
             }
-            // // Set Less Than 
-            // 0xB => {
-            //     if 
-            // }
+            // Set on Less Than Immediate (unsigned)
+            // If rs is less than sign-extended 16-bit immediate using unsigned comparison, then set rt to 1
+            // casting is to sign extend again
+            0xB => { 
+                self.regs[ins.rt] = if self.regs[ins.rs] < (ins.imm as i16 as i32 as u32) { 1 } else { 0 };
+            }
             // Or Immediate
             0xD => {
                 // Rust zero-extends unsigned values when up-casting
