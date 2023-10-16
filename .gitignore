@@ -25,3 +25,4 @@ name-ext/node_modules/*
 *.out
 *.o
 !name-as/.artifacts/*
+name-fmt/node_modules/
