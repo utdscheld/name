@@ -126,6 +126,11 @@
       {
         "command": "extension.vsname.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "extension.vsname.openTerminal",
+        "category": "VSName",
+        "title": "Open NAME Terminal"
       }
     ],
 		"languages": [

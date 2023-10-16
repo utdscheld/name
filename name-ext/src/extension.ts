@@ -16,6 +16,14 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
 			HelloWorldPanel.createOrShow(context.extensionUri);
+		}),
+		vscode.commands.registerCommand('extension.vsname.openTerminal', () => {
+			const terminal = vscode.window.createTerminal('NAME Emulator');
+			terminal.show();
+			terminal.sendText('echo Hello, Terminal!');
+			terminal.sendText('cd C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\mainName\\name\\name-emu');
+			terminal.sendText('cargo build --release');
+			terminal.sendText('cargo run');
 		})
 	);
 	
