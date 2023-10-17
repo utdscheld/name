@@ -102,7 +102,7 @@ fn main() -> DynResult<()> {
         let (stream, _) = listener.accept().unwrap();
 
         // let stream = std::rc::Rc::new(stream);
-        (Box::new(stream.try_clone().unwrap()), Box::new(stream))
+        (stream.try_clone().unwrap(), stream)
       }
       else {
         println!("Failed to bind port {}", port_number);
