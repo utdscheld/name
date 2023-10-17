@@ -9,7 +9,10 @@ use thiserror::Error;
 use dap::prelude::*;
 
 mod mips;
-use mips::{Mips, ExecutionErrors};
+use mips::Mips;
+
+mod exception;
+use exception::{ExecutionErrors, exception_pretty_print};
 
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
@@ -144,7 +147,7 @@ fn main() -> DynResult<()> {
     supports_restart_request: Some(true),
     supports_exception_options: Some(false),
     supports_value_formatting_options: Some(false),
-    supports_exception_info_request: Some(false),
+    supports_exception_info_request: Some(true),
     support_terminate_debuggee: Some(false),
     support_suspend_debuggee: Some(false),
     supports_delayed_stack_trace_loading: Some(false),
@@ -462,6 +465,16 @@ loop {
         hit_breakpoint_ids: None
       };
       server.send_event(Event::Stopped(stopped_event_body))?;
+    }
+
+    Command::ExceptionInfo(_) => {
+      let exception_info = exception_pretty_print(mips.prev_ins_result);
+
+      let rsp = req.success(
+        ResponseBody::ExceptionInfo(exception_info)
+      );
+
+      server.respond(rsp)?;
     }
 
     _ => ()

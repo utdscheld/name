@@ -1,9 +1,10 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::fmt;
 use std::io::Cursor;
 
 use std::fs::File;
 use std::io::Write;
+
+use crate::exception::ExecutionErrors;
 
 pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
@@ -67,37 +68,18 @@ pub(crate) struct Mips {
     
 
     // A list of vectors of memory pools, their base addresses, and their
-    // maximum lengths.
+    // lengths.
+    // Memories allocated at runtime will actually have Vec lengths shorter
+    // than this by 0x10. This is intended to alert the user that they 
+    // probably wrote out of bounds, allowing us to return a clearer exception
+    // and explanation as to what happened.
     pub memories: Vec<(Vec<u8>, u32, u32)>,
     // The end of the MIPS program. In NAME, the program terminates when no more instructions exist
     // (as in, falling off the bottom is valid).
-    pub stop_address: usize
-}
-
-#[derive(Debug)]
-#[derive(PartialEq, Copy, Clone)]
-pub(crate) enum ExecutionErrors {
-    // The program attempted to access an address that was within a
-    // valid range, but was outside the current allocation for that range.
-    // This should be treated as a warning, and read out as zero.
-    MemoryObviouslyUninitializedAccess,
-    // The program attempted to read from an area for which no valid range existed.
-    MemoryIllegalAccess,
-
-    // The program is done executing.
-    ProgramComplete,
-
-    UndefinedInstruction,
-    // Can also refer to underflow
-    IntegerOverflow
-}
-
-impl fmt::Display for ExecutionErrors {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-        // or, alternatively:
-        // fmt::Debug::fmt(self, f)
-    }
+    pub stop_address: usize,
+    
+    // Memory for the result of a previous instruction (useful for tracking exceptions)
+    pub prev_ins_result: Result<(), ExecutionErrors>
 }
 
 
@@ -114,7 +96,8 @@ impl Default for Mips {
             memories: vec![
                 (vec![0; LEN_TEXT_INITIAL], DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
             ],
-            stop_address: DOT_TEXT_START_ADDRESS as usize
+            stop_address: DOT_TEXT_START_ADDRESS as usize,
+            prev_ins_result: Ok(())
         }
     }
 }
@@ -155,7 +138,7 @@ enum Instructions {
 
 impl Mips {
 
-    fn dispatch_r(&mut self, ins: Rtype) -> Result<(), ExecutionErrors> {
+    fn dispatch_r(&mut self, ins: Rtype, opcode: u32) -> Result<(), ExecutionErrors> {
 
         match ins.funct {
             // Shift-left logical
@@ -171,7 +154,14 @@ impl Mips {
                 let result = self.regs[ins.rt].checked_add(self.regs[ins.rs]);
                 match result {
                     Some(value) => {self.regs[ins.rd] = value;}
-                    None => {return Err(ExecutionErrors::IntegerOverflow);}
+                    None => {
+                        return Err(ExecutionErrors::IntegerOverflow { 
+                        rt: ins.rt, 
+                        rs: ins.rs, 
+                        value1: self.regs[ins.rt],
+                        value2: self.regs[ins.rs]
+                        });
+                    }
                 }
             }
             // Subtract
@@ -179,7 +169,14 @@ impl Mips {
                 let result = self.regs[ins.rt].checked_sub(self.regs[ins.rs]);
                 match result {
                     Some(value) => {self.regs[ins.rd] = value;}
-                    None => {return Err(ExecutionErrors::IntegerOverflow);}
+                    None => {
+                        return Err(ExecutionErrors::IntegerOverflow { 
+                        rt: ins.rt, 
+                        rs: ins.rs, 
+                        value1: self.regs[ins.rt],
+                        value2: self.regs[ins.rs]
+                        });
+                    }
                 }
             }
             // Or
@@ -203,11 +200,11 @@ impl Mips {
                     self.regs[ins.rd] = 0;
                 }
             }
-            _ => return Err(ExecutionErrors::UndefinedInstruction)
+            _ => return Err(ExecutionErrors::UndefinedInstruction {instruction: opcode})
         }
         Ok(())
     }
-    fn dispatch_i(&mut self, ins: Itype) -> Result<(), ExecutionErrors> {
+    fn dispatch_i(&mut self, ins: Itype, opcode: u32) -> Result<(), ExecutionErrors> {
 
         let memory_address = (ins.rt as i64 + (ins.imm as i64)) as u32;
 
@@ -292,11 +289,11 @@ impl Mips {
             }
             
 
-            _ => return Err(ExecutionErrors::UndefinedInstruction)
+            _ => return Err(ExecutionErrors::UndefinedInstruction {instruction: opcode})
         }
         Ok(())
     }
-    fn dispatch_j(&mut self, ins: Jtype) -> Result<(), ExecutionErrors> {
+    fn dispatch_j(&mut self, ins: Jtype, opcode: u32) -> Result<(), ExecutionErrors> {
         // This instruction type takes the top nybble of PC and combines it with
         // a 28-bit range (26 bits as encoded shifted left twice.)
         // Thus, you can jump to anywhere in a 256MB address space.
@@ -313,7 +310,7 @@ impl Mips {
                 // $ra = register 31
                 self.regs[31] = self.pc as u32 + 8;
             }
-            _ => return Err(ExecutionErrors::UndefinedInstruction)
+            _ => return Err(ExecutionErrors::UndefinedInstruction {instruction: opcode})
         }
 
         Ok(())
@@ -377,11 +374,14 @@ impl Mips {
             if let Some(value) = memory.get(offset as usize) {
                 Ok(*value)
             }
+            // Although this memory access was technically within this range,
+            // the Vec did not actually fit within it. This means that the user
+            // wrote out of bounds of the buffer
             else {
-                Err(ExecutionErrors::MemoryObviouslyUninitializedAccess)
+                Err(ExecutionErrors::MemoryObviousOverrunAccess { load_address: address } )
             }
         }
-        else { Err(ExecutionErrors::MemoryIllegalAccess) }
+        else { Err(ExecutionErrors::MemoryIllegalAccess { load_address: address } ) }
     }
     // Reads two bytes and returns a halfword
     pub fn read_h(&mut self, address: u32) -> Result<u16, ExecutionErrors> {
@@ -396,13 +396,19 @@ impl Mips {
     }
 
     
-    // I'm clueless on how to expand this. I need to talk to Cole. Writes one byte
+    // Writes one byte
     pub fn write_b(&mut self, address: u32, value: u8) -> Result<(), ExecutionErrors> {
         if let Some((memory, offset)) = self.map_memory(address) {
-            memory[offset as usize] = value;
-            Ok(())
+            if let Some(element) = memory.get_mut(offset as usize) {
+                *element = value;
+                Ok(())
+            }
+            else {
+                Err(ExecutionErrors::MemoryObviousOverrunAccess { load_address: address }
+                )
+            }
         }
-        else { Err(ExecutionErrors::MemoryIllegalAccess) }
+        else { Err(ExecutionErrors::MemoryIllegalAccess { load_address: address } ) }
     }
     // Writes a halfword in little endian form
     pub fn write_h(&mut self, address: u32, value: u16) -> Result<(), ExecutionErrors> {
@@ -435,14 +441,18 @@ impl Mips {
         writeln!(f,"{:?}", instruction);
 
         let ins_result = match instruction {
-            Instructions::R(rtype) => self.dispatch_r(rtype),
-            Instructions::I(itype) => self.dispatch_i(itype),
-            Instructions::J(jtype) => self.dispatch_j(jtype)
+            Instructions::R(rtype) => self.dispatch_r(rtype, opcode),
+            Instructions::I(itype) => self.dispatch_i(itype, opcode),
+            Instructions::J(jtype) => self.dispatch_j(jtype, opcode)
         };
 
         // The zero register is ALWAYS 0.
         // If an instruction wrote to the zero register, discard that result here.
         self.regs[0] = 0;
+
+        if let Err(_) = ins_result {
+            self.pc -= 4; // 
+        }
 
         // Branch delay slots are handled here. On the instruction the branch is set,
         // it is not triggered, and instead the state shifts such that after the end of
@@ -455,6 +465,8 @@ impl Mips {
                 self.branch_delay_status = BranchDelays::NotActive;
             }
         }
+
+        self.prev_ins_result = ins_result;
 
         ins_result
     }
