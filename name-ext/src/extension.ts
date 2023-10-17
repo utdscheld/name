@@ -23,7 +23,36 @@ export function activate(context: vscode.ExtensionContext) {
 			terminal.sendText('echo Hello, Terminal!');
 			terminal.sendText('cd C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\mainName\\name\\name-emu');
 			terminal.sendText('cargo build --release');
-			terminal.sendText('cargo run');
+			terminal.sendText('cargo run 63321');
+
+			// Listen for the "Port is ready" message in the terminal
+			// const terminalNameToCheck = 'NAME Emulator';
+    		// const disposable = vscode.window.onDidChangeActiveTerminal(activatedTerminal => {
+       		// if (activatedTerminal && activatedTerminal.name === terminalNameToCheck) {
+       		//     const exitListener = vscode.window.onDidCloseTerminal(terminal => {
+       		//         if (terminal === activatedTerminal) {
+       		//             // Execute the second command when the terminal is closed
+       		//             vscode.commands.executeCommand('extension.vsname.connectToEmulator');
+       		//             disposable.dispose();
+       		//             exitListener.dispose();
+       		//         }
+            // });
+// 
+            // activatedTerminal.sendText('echo "Port is ready"'); // Send a check message
+       		// }
+    		// });
+		}),
+		vscode.commands.registerCommand('extension.vsname.commandTest', () => {
+			const terminal = vscode.window.createTerminal('NAME Emulator - Manual');
+			terminal.show();
+			terminal.sendText('echo Hello, Terminal!');
+			terminal.sendText('cd C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\mainName\\name\\name-emu');
+			terminal.sendText('cargo build --release');
+			terminal.sendText('cargo run 63321');
+		}),
+		vscode.commands.registerCommand('extension.vsname.connectToEmulator', () => {
+			console.log("connectToEmulator called");
+			activateNameDebug(context, new NameDebugAdapterServerDescriptorFactory());
 		})
 	);
 	
@@ -31,9 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// debug adapters can be run in different ways by using a vscode.DebugAdapterDescriptorFactory:
 	switch (runMode) {
 		case 'server':
-			// run the debug adapter as a server inside the extension and communicate via a socket
 			activateNameDebug(context, new NameDebugAdapterServerDescriptorFactory());
-			vscode.window.createTerminal(`New termainal name`);
 			break;
 
 		case 'external': default:
@@ -55,9 +82,9 @@ export function deactivate() {}
 class NameDebugAdapterServerDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
 
 	private server?: Net.Server;
+	
 
 	createDebugAdapterDescriptor(session: vscode.DebugSession, executable: vscode.DebugAdapterExecutable | undefined): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-
 		// make VS Code connect to debug server
 		return new vscode.DebugAdapterServer(63321);
 	}

@@ -11,6 +11,9 @@ import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
 
 export function activateNameDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
+	// vscode.commands.executeCommand('extension.vsname.openTerminal');
+	// Launches but then trys to connect same time
+
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('extension.vsname.runEditorContents', (resource: vscode.Uri) => {
@@ -130,6 +133,7 @@ class NameConfigurationProvider implements vscode.DebugConfigurationProvider {
 	 * e.g. add all missing attributes to the debug configuration.
 	 */
 	resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration, token?: CancellationToken): ProviderResult<DebugConfiguration> {
+		// launched vscode.commands.executeCommand('extension.vsname.openTerminal');
 
 		// if launch.json is missing or empty
 		if (!config.type && !config.request && !config.name) {
@@ -153,9 +157,9 @@ class NameConfigurationProvider implements vscode.DebugConfigurationProvider {
 	}
 }
 
-class ExecutableDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
-
-	createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
-		return new vscode.DebugAdapterExecutable('/home/qwe/Documents/CS4485/name/name-emu/target/release/name');
-	}
-}
+//class ExecutableDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
+//
+//	createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
+//		return new vscode.DebugAdapterExecutable('/home/qwe/Documents/CS4485/name/name-emu/target/release/name');
+//	}
+//}

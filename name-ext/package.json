@@ -131,6 +131,16 @@
         "command": "extension.vsname.openTerminal",
         "category": "VSName",
         "title": "Open NAME Terminal"
+      },
+      {
+        "command": "extension.vsname.commandTest",
+        "category": "VSName",
+        "title": "Open NAME Terminal - Testing"
+      },
+      {
+        "command": "extension.vsname.connectToEmulator",
+        "category": "VSName",
+        "title": "Connect To Emulator on port 63321"
       }
     ],
 		"languages": [

@@ -77,7 +77,7 @@ fn reset_mips() -> Mips {
 }
 
 fn main() -> DynResult<()> {
-  println!("HellO!");
+  println!("Port is ready");
 
   let args_strings: Vec<String> = env::args().collect();
 
