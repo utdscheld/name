@@ -26,3 +26,4 @@ name-ext/node_modules/*
 *.o
 !name-as/.artifacts/*
 name-fmt/node_modules/
+*.li

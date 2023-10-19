@@ -3,6 +3,7 @@ extern crate pest_derive;
 
 pub mod args;
 pub mod config;
+pub mod lineinfo;
 
 pub mod nma;
 pub mod parser;
@@ -11,7 +12,7 @@ use args::parse_args;
 use nma::assemble;
 use std::process::Command;
 
-fn main() -> Result<(), &'static str> {
+fn main() -> Result<(), String> {
     // Parse command line arguments and the config file
     let cmd_args = parse_args()?;
 
@@ -54,7 +55,7 @@ fn main() -> Result<(), &'static str> {
                 }
                 Err(err) => {
                     eprintln!("CMD {}\nError: {}", full_cmd, err);
-                    return Err("Failed to run assembler command");
+                    return Err("Failed to run assembler command".to_string());
                 }
             }
         }
