@@ -15,12 +15,20 @@ pub enum ExecutionErrors {
     // The program attempted to read from an area for which no valid range existed.
     MemoryIllegalAccess { load_address: u32 },
 
-    // The program is done executing.
-    ProgramComplete,
-
     UndefinedInstruction { instruction: u32 },
     // Can also refer to underflow
-    IntegerOverflow { rt: usize, rs: usize, value1: u32, value2: u32 }
+    IntegerOverflow { rt: usize, rs: usize, value1: u32, value2: u32 },
+
+    Event { event: ExecutionEvents }
+}
+
+#[derive(Debug)]
+#[derive(PartialEq, Copy, Clone)]
+pub enum ExecutionEvents {
+    // The program is done executing.
+    ProgramComplete
+
+    // Eventually instruction/data/etc. breakpoints will go here too
 }
 
 impl fmt::Display for ExecutionErrors {
@@ -41,8 +49,10 @@ pub fn exception_pretty_print(reason: Result<(), ExecutionErrors>) -> ExceptionI
         details: None
     },
     Err(reason) =>  match reason {
-        ExecutionErrors::ProgramComplete => ExceptionInfoResponse {
-            exception_id: "Program Complete".into(),
+        // These events aren't lifted out as exceptions,
+        // so a well-formed debug adapter should not attempt to view them
+        ExecutionErrors::Event { .. } => ExceptionInfoResponse {
+            exception_id: "Execution Event".into(),
             description: None,
             break_mode: ExceptionBreakMode::Never,
             details: None

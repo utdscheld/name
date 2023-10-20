@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
 use dap::events::{StoppedEventBody, ExitedEventBody, TerminatedEventBody};
-use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse};
+use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse, ContinueResponse};
 use dap::types::{StoppedEventReason, Thread, StackFrame, Scope, Source, Variable};
 use thiserror::Error;
 
@@ -12,7 +12,7 @@ mod mips;
 use mips::Mips;
 
 mod exception;
-use exception::{ExecutionErrors, exception_pretty_print};
+use exception::{ExecutionErrors, exception_pretty_print, ExecutionEvents};
 
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
@@ -280,7 +280,7 @@ loop {
       
       let result = mips.step_one(&mut file);
       let stopped_event_body = match result {
-        Ok(()) | Err(ExecutionErrors::ProgramComplete) => {
+        Ok(()) | Err(ExecutionErrors::Event { event: ExecutionEvents::ProgramComplete }) => {
           StoppedEventBody {
             reason: StoppedEventReason::Step,
             description: None,
@@ -291,13 +291,13 @@ loop {
             hit_breakpoint_ids: None
           }
         }
-        Err(execution_error) => {
+        Err(_) => {
           StoppedEventBody {
             reason: StoppedEventReason::Exception,
-            description: Some("Exception".to_owned()),
+            description: None,
             thread_id: Some(0),
             preserve_focus_hint: None,
-            text: Some(execution_error.to_string()),
+            text: None,
             all_threads_stopped: None,
             hit_breakpoint_ids: None
           }
@@ -309,9 +309,13 @@ loop {
       );
       server.respond(rsp)?;
 
-      if result == Err(ExecutionErrors::ProgramComplete) {
-        server.send_event(Event::Terminated(None))?;
-        server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
+      if let Err(event) = result {
+        if let ExecutionErrors::Event{event} = event {
+          if event == ExecutionEvents::ProgramComplete {
+            server.send_event(Event::Terminated(None))?;
+            server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
+          }
+        }
       }
       else {
         writeln!(file, "{:?}", stopped_event_body)?;
@@ -475,6 +479,67 @@ loop {
       );
 
       server.respond(rsp)?;
+    }
+
+    Command::Continue(_) => {
+      let rsp = req.success(
+        ResponseBody::Continue(ContinueResponse{ all_threads_continued: Some(true)})
+      );
+      server.respond(rsp)?;
+
+      // Keep stepping until something happens...
+      loop {
+        if let Err(_) = mips.step_one(&mut file) {
+          break;
+        }
+      }
+      // OK, what happened?
+      let stopped_event_body = match mips.prev_ins_result {
+        Ok(()) => unreachable!(), // It's unreachable.
+        Err(what_happened) => match what_happened {
+          ExecutionErrors::Event{event} => match event {
+            ExecutionEvents::ProgramComplete => {
+              StoppedEventBody {
+                reason: StoppedEventReason::Step,
+                description: None,
+                thread_id: Some(0),
+                preserve_focus_hint: None,
+                text: None,
+                all_threads_stopped: None,
+                hit_breakpoint_ids: None
+              }
+            }
+          },
+          _ => { // Some kind of exception occurred...
+            StoppedEventBody {
+              reason: StoppedEventReason::Exception,
+              description: None,
+              thread_id: Some(0),
+              preserve_focus_hint: None,
+              text: None,
+              all_threads_stopped: None,
+              hit_breakpoint_ids: None
+            }
+          }
+        }
+      };
+      server.send_event(Event::Stopped(stopped_event_body))?;
+
+      // Whole second match body to figure out what to do about it
+      match mips.prev_ins_result {
+        Ok(()) => unreachable!(), // It's unreachable.
+        Err(what_happened) => match what_happened {
+          ExecutionErrors::Event{event} => match event {
+            ExecutionEvents::ProgramComplete => {
+              server.send_event(Event::Terminated(None))?;
+              server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
+            }
+          },
+          _ => { // Some kind of exception occurred...
+            () // Don't need to do anything else for now
+          }
+        }
+      }
     }
 
     _ => ()

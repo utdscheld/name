@@ -4,7 +4,7 @@ use std::io::Cursor;
 use std::fs::File;
 use std::io::Write;
 
-use crate::exception::ExecutionErrors;
+use crate::exception::{ExecutionErrors, ExecutionEvents};
 
 pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
@@ -434,7 +434,7 @@ impl Mips {
         self.pc += 4;
 
         if self.pc == self.stop_address {
-            return Err(ExecutionErrors::ProgramComplete);
+            return Err(ExecutionErrors::Event { event: ExecutionEvents::ProgramComplete });
         }
 
         let instruction = self.decode(opcode);
