@@ -494,6 +494,7 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
 
     // Assign addresses to labels
     let mut current_addr: u32 = TEXT_ADDRESS_BASE;
+    let mut line_number: u32 = 1;
     let mut labels: HashMap<&str, u32> = HashMap::new();
     for sub_cst in &vernac_sequence {
         match sub_cst {
@@ -518,7 +519,7 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                 // Update line info
                 lineinfo.push(LineInfo {
                     instr_addr: current_addr,
-                    line_number: 0,
+                    line_number: line_number,
                     line_contents: instr_to_str(mnemonic, &args),
                     psuedo_op: "".to_string(),
                 });
@@ -569,6 +570,7 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
         };
 
         current_addr += MIPS_INSTR_BYTE_WIDTH;
+        line_number += 1;
     }
 
     if program_arguments.line_info {
