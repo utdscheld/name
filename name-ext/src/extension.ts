@@ -28,7 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		case 'external': default:
 			// run the debug adapter as a separate process
-			//activateMockDebug(context, new DebugAdapterExecutableFactory());
+			//activateMockDebug(context, new DebugAdapterExecutableFactory()); #
 			break;
 
 		case 'inline':
