@@ -24,23 +24,6 @@ export function activate(context: vscode.ExtensionContext) {
 			terminal.sendText('cd C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\mainName\\name\\name-emu');
 			terminal.sendText('cargo build --release');
 			terminal.sendText('cargo run 63321');
-
-			// Listen for the "Port is ready" message in the terminal
-			// const terminalNameToCheck = 'NAME Emulator';
-    		// const disposable = vscode.window.onDidChangeActiveTerminal(activatedTerminal => {
-       		// if (activatedTerminal && activatedTerminal.name === terminalNameToCheck) {
-       		//     const exitListener = vscode.window.onDidCloseTerminal(terminal => {
-       		//         if (terminal === activatedTerminal) {
-       		//             // Execute the second command when the terminal is closed
-       		//             vscode.commands.executeCommand('extension.vsname.connectToEmulator');
-       		//             disposable.dispose();
-       		//             exitListener.dispose();
-       		//         }
-            // });
-// 
-            // activatedTerminal.sendText('echo "Port is ready"'); // Send a check message
-       		// }
-    		// });
 		}),
 		vscode.commands.registerCommand('extension.vsname.commandTest', () => {
 			const terminal = vscode.window.createTerminal('NAME Emulator - Manual');
