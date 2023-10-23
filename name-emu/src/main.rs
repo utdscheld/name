@@ -67,7 +67,7 @@ fn reset_mips() -> Mips {
   // Reset execution and begin again.
   let mut mips: Mips = Default::default();
 
-  let program_data = std::fs::read("C:\\Users\\wells\\OneDrive\\Documents\\GitHub\\name\\name\\name-as\\output.o").unwrap();
+  let program_data = std::fs::read("..\\name-as\\output.o").unwrap();
 
   for (i, byte) in program_data.iter().enumerate() {
     mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
@@ -77,6 +77,7 @@ fn reset_mips() -> Mips {
 }
 
 fn main() -> DynResult<()> {
+  println!("Port is ready");
 
   let args_strings: Vec<String> = env::args().collect();
 

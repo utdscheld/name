@@ -1,7 +1,11 @@
+extern crate pest;
+extern crate pest_derive;
+
 pub mod args;
 pub mod config;
 
 pub mod nma;
+pub mod parser;
 
 use args::parse_args;
 use nma::assemble;
