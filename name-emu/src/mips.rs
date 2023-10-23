@@ -9,6 +9,7 @@ use crate::exception::{ExecutionErrors, ExecutionEvents};
 pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
 const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
 const LEN_TEXT_INITIAL: usize = 200;
+const MIPS_INSTRUCTION_LENGTH: usize = 4;
 
 pub const REGISTER_NAMES: [&str; 32] = [
     "$zero",
@@ -431,7 +432,7 @@ impl Mips {
 
     pub fn step_one(&mut self, mut f :&mut File) -> Result<(), ExecutionErrors> {
         let opcode = self.read_w(self.pc as u32)?;
-        self.pc += 4;
+        self.pc += MIPS_INSTRUCTION_LENGTH;
 
         if self.pc == self.stop_address {
             return Err(ExecutionErrors::Event { event: ExecutionEvents::ProgramComplete });
@@ -450,8 +451,8 @@ impl Mips {
         // If an instruction wrote to the zero register, discard that result here.
         self.regs[0] = 0;
 
-        if let Err(_) = ins_result {
-            self.pc -= 4; // 
+        if ins_result.is_err() {
+            self.pc -= MIPS_INSTRUCTION_LENGTH; // 
         }
 
         // Branch delay slots are handled here. On the instruction the branch is set,

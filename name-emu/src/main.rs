@@ -100,8 +100,6 @@ fn main() -> DynResult<()> {
       if let Ok(listener) = TcpListener::bind(format!("127.0.0.1:{}", port_number)) {
 
         let (stream, _) = listener.accept().unwrap();
-
-        // let stream = std::rc::Rc::new(stream);
         (stream.try_clone().unwrap(), stream)
       }
       else {
