@@ -18,13 +18,13 @@ build: fmt
 	$(CARGO) build
 
 run: build
-	$(CARGO) run $(CONFIG) $(INPUT) $(OUTPUT)
+	$(CARGO) run -- -l $(CONFIG) $(INPUT) $(OUTPUT)
 
 run-gnu: build
-	$(CARGO) run $(GNUCFG) $(INPUT) $(OUTPUT)
+	$(CARGO) run -- $(GNUCFG) $(INPUT) $(OUTPUT)
 
 test: run
-	$(CARGO) run $(GNUCFG) $(INPUT) gnu-$(OUTPUT)
+	$(CARGO) run -- $(GNUCFG) $(INPUT) gnu-$(OUTPUT)
 	md5sum $(OUTPUT) gnu-$(OUTPUT)
 
 clean:

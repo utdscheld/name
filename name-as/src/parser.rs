@@ -68,3 +68,7 @@ pub fn print_cst(cst: &MipsCST) {
         }
     }
 }
+
+pub fn instr_to_str(mnemonic: &str, args: &[&str]) -> String {
+    format!("{} {}", mnemonic, args.join(" "))
+}
