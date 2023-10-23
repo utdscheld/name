@@ -2,14 +2,17 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
 use dap::events::{StoppedEventBody, ExitedEventBody, TerminatedEventBody};
-use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse};
+use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse, ContinueResponse};
 use dap::types::{StoppedEventReason, Thread, StackFrame, Scope, Source, Variable};
 use thiserror::Error;
 
 use dap::prelude::*;
 
 mod mips;
-use mips::{Mips, ExecutionErrors};
+use mips::Mips;
+
+mod exception;
+use exception::{ExecutionErrors, exception_pretty_print, ExecutionEvents};
 
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
@@ -24,7 +27,10 @@ enum MyAdapterError {
   MissingCommandError,
 
   #[error("Command argument error")]
-  CommandArgumentError
+  CommandArgumentError,
+  
+  #[error("Argument parsing error")]
+  ArgumentParsingError
 }
 
 type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -63,15 +69,14 @@ type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 //     }
 // }
 
-fn reset_mips() -> Mips {
+fn reset_mips(program_data: &[u8]) -> Mips {
   // Reset execution and begin again.
-  let mut mips: Mips = Default::default();
-
-  let program_data = std::fs::read("/home/qwe/Documents/CS4485/name/name-as/output.o").unwrap();
+  let mut mips: Mips = Default::default();  
 
   for (i, byte) in program_data.iter().enumerate() {
     mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
   }
+  mips.stop_address = mips::DOT_TEXT_START_ADDRESS as usize + program_data.len();
 
   mips
 }
@@ -80,30 +85,41 @@ fn main() -> DynResult<()> {
 
   let args_strings: Vec<String> = env::args().collect();
 
-  if args_strings.len() > 2 {
-      return Err("USAGE: name-emu [optional port number]".into());
+  if args_strings.len() != 4 {
+      return Err("USAGE: name-emu [port number] [source file] [object file]".into());
   }
   let log_path = std::path::Path::join(env::temp_dir().as_path(), "name_log.txt");
   let mut file = File::create(log_path)?;
   file.write_all(b"NAME Development Log\n")?;
 
 
-  let (in_port, out_port): (Box<dyn std::io::Read>, Box<dyn std::io::Write>) = if let Some(port_string) = args_strings.get(1) {
-    if let Ok(port_number) = port_string.parse::<u32>() {
+  let port_string = args_strings.get(1).unwrap();
+  
+  let (in_port, out_port) = if let Ok(port_number) = port_string.parse::<u32>() {
 
-      let listener = TcpListener::bind(format!("127.0.0.1:{}", port_number)).unwrap();
+      if let Ok(listener) = TcpListener::bind(format!("127.0.0.1:{}", port_number)) {
 
-      let (stream, _) = listener.accept().unwrap();
-
-      // let stream = std::rc::Rc::new(stream);
-      (Box::new(stream.try_clone().unwrap()), Box::new(stream))
-    }
-    else {
-      (Box::new(std::io::stdin()), Box::new(std::io::stdout()))
-    }
+        let (stream, _) = listener.accept().unwrap();
+        (stream.try_clone().unwrap(), stream)
+      }
+      else {
+        println!("Failed to bind port {}", port_number);
+        return Err(Box::new(MyAdapterError::ArgumentParsingError));
+      }
   }
   else {
-    (Box::new(std::io::stdin()), Box::new(std::io::stdout()))
+    println!("Failed to parse port number");
+    return Err(Box::new(MyAdapterError::ArgumentParsingError));
+  };
+
+  let program_name = args_strings.get(2).unwrap();
+
+  let program_data = match std::fs::read(args_strings.get(3).unwrap()) {
+    Ok(program_data) => program_data,
+    Err(why) => {
+      println!("Failed to open provided object file. Reason: {}", why);
+      return Err(Box::new(MyAdapterError::ArgumentParsingError));      
+    }
   };
 
 
@@ -129,7 +145,7 @@ fn main() -> DynResult<()> {
     supports_restart_request: Some(true),
     supports_exception_options: Some(false),
     supports_value_formatting_options: Some(false),
-    supports_exception_info_request: Some(false),
+    supports_exception_info_request: Some(true),
     support_terminate_debuggee: Some(false),
     support_suspend_debuggee: Some(false),
     supports_delayed_stack_trace_loading: Some(false),
@@ -170,7 +186,7 @@ loop {
   
       server.send_event(Event::Initialized)?;
 
-      mips = reset_mips();
+      mips = reset_mips(&program_data);
 
     }
 
@@ -262,7 +278,7 @@ loop {
       
       let result = mips.step_one(&mut file);
       let stopped_event_body = match result {
-        Ok(()) | Err(ExecutionErrors::ProgramComplete) => {
+        Ok(()) | Err(ExecutionErrors::Event { event: ExecutionEvents::ProgramComplete }) => {
           StoppedEventBody {
             reason: StoppedEventReason::Step,
             description: None,
@@ -273,13 +289,13 @@ loop {
             hit_breakpoint_ids: None
           }
         }
-        Err(execution_error) => {
+        Err(_) => {
           StoppedEventBody {
             reason: StoppedEventReason::Exception,
-            description: Some("Exception".to_owned()),
+            description: None,
             thread_id: Some(0),
             preserve_focus_hint: None,
-            text: Some(execution_error.to_string()),
+            text: None,
             all_threads_stopped: None,
             hit_breakpoint_ids: None
           }
@@ -291,8 +307,13 @@ loop {
       );
       server.respond(rsp)?;
 
-      if result == Err(ExecutionErrors::ProgramComplete) {
-        server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
+      if let Err(event) = result {
+        if let ExecutionErrors::Event{event} = event {
+          if event == ExecutionEvents::ProgramComplete {
+            server.send_event(Event::Terminated(None))?;
+            server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
+          }
+        }
       }
       else {
         writeln!(file, "{:?}", stopped_event_body)?;
@@ -345,20 +366,7 @@ loop {
           StackFrame{
             id: 0,
             name: "mips".to_string(),
-            source: Some(Source { name: Some("/home/qwe/Documents/CS4485/name/mips_test.asm".to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
-            line: 1,
-            column: 0,
-            end_line: None,
-            end_column: None,
-            can_restart: None,
-            instruction_pointer_reference: None,
-            module_id: None,
-            presentation_hint: None
-          },
-          StackFrame{
-            id: 1,
-            name: "mips2".to_string(),
-            source: Some(Source { name: Some("/home/qwe/Documents/CS4485/name/mips_test.asm".to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
+            source: Some(Source { name: Some(program_name.to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
             line: 1,
             column: 0,
             end_line: None,
@@ -442,7 +450,7 @@ loop {
     }
 
     Command::Restart(_) => {
-      mips = reset_mips();
+      mips = reset_mips(&program_data);
 
       let rsp = req.success(
         ResponseBody::Restart
@@ -459,6 +467,77 @@ loop {
         hit_breakpoint_ids: None
       };
       server.send_event(Event::Stopped(stopped_event_body))?;
+    }
+
+    Command::ExceptionInfo(_) => {
+      let exception_info = exception_pretty_print(mips.prev_ins_result);
+
+      let rsp = req.success(
+        ResponseBody::ExceptionInfo(exception_info)
+      );
+
+      server.respond(rsp)?;
+    }
+
+    Command::Continue(_) => {
+      let rsp = req.success(
+        ResponseBody::Continue(ContinueResponse{ all_threads_continued: Some(true)})
+      );
+      server.respond(rsp)?;
+
+      // Keep stepping until something happens...
+      loop {
+        if let Err(_) = mips.step_one(&mut file) {
+          break;
+        }
+      }
+      // OK, what happened?
+      let stopped_event_body = match mips.prev_ins_result {
+        Ok(()) => unreachable!(), // It's unreachable.
+        Err(what_happened) => match what_happened {
+          ExecutionErrors::Event{event} => match event {
+            ExecutionEvents::ProgramComplete => {
+              StoppedEventBody {
+                reason: StoppedEventReason::Step,
+                description: None,
+                thread_id: Some(0),
+                preserve_focus_hint: None,
+                text: None,
+                all_threads_stopped: None,
+                hit_breakpoint_ids: None
+              }
+            }
+          },
+          _ => { // Some kind of exception occurred...
+            StoppedEventBody {
+              reason: StoppedEventReason::Exception,
+              description: None,
+              thread_id: Some(0),
+              preserve_focus_hint: None,
+              text: None,
+              all_threads_stopped: None,
+              hit_breakpoint_ids: None
+            }
+          }
+        }
+      };
+      server.send_event(Event::Stopped(stopped_event_body))?;
+
+      // Whole second match body to figure out what to do about it
+      match mips.prev_ins_result {
+        Ok(()) => unreachable!(), // It's unreachable.
+        Err(what_happened) => match what_happened {
+          ExecutionErrors::Event{event} => match event {
+            ExecutionEvents::ProgramComplete => {
+              server.send_event(Event::Terminated(None))?;
+              server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
+            }
+          },
+          _ => { // Some kind of exception occurred...
+            () // Don't need to do anything else for now
+          }
+        }
+      }
     }
 
     _ => ()

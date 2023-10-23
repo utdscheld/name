@@ -1,5 +1,6 @@
 /// NAME Mips Assembler
 use crate::args::Args;
+use crate::lineinfo::*;
 use crate::parser::print_cst;
 use std::collections::HashMap;
 use std::fs;
@@ -456,20 +457,20 @@ use crate::parser::*;
 use pest::Parser;
 
 // General assembler entrypoint
-pub fn assemble(args: &Args) -> Result<(), &'static str> {
+pub fn assemble(program_arguments: &Args) -> Result<(), String> {
     // IO Setup
-    let input_fn = &args.input_as;
-    let output_fn = &args.output_as;
+    let input_fn = &program_arguments.input_as;
+    let output_fn = &program_arguments.output_as;
 
     let output_file: File = match File::create(output_fn) {
         Ok(v) => v,
-        Err(_) => return Err("Failed to open output file"),
+        Err(_) => return Err("Failed to open output file".to_string()),
     };
 
     // Read input
     let file_contents: String = match fs::read_to_string(input_fn) {
         Ok(v) => v,
-        Err(_) => return Err("Failed to read input file contents"),
+        Err(_) => return Err("Failed to read input file contents".to_string()),
     };
 
     // Parse into CST
@@ -481,6 +482,10 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     );
     print_cst(&cst);
 
+    // Set up line info
+    let lineinfo_fn = format!("{}.li", &program_arguments.output_as);
+    let mut lineinfo: Vec<LineInfo> = vec![];
+
     let vernac_sequence: Vec<MipsCST> = if let MipsCST::Sequence(v) = cst {
         v
     } else {
@@ -489,6 +494,7 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
 
     // Assign addresses to labels
     let mut current_addr: u32 = TEXT_ADDRESS_BASE;
+    let mut line_number: u32 = 1;
     let mut labels: HashMap<&str, u32> = HashMap::new();
     for sub_cst in &vernac_sequence {
         match sub_cst {
@@ -510,6 +516,14 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
     for sub_cst in vernac_sequence {
         match sub_cst {
             MipsCST::Instruction(mnemonic, args) => {
+                // Update line info
+                lineinfo.push(LineInfo {
+                    instr_addr: current_addr,
+                    line_number: line_number,
+                    line_contents: instr_to_str(mnemonic, &args),
+                    psuedo_op: "".to_string(),
+                });
+
                 if let Ok(instr_info) = r_operation(mnemonic) {
                     println!("-----------------------------------");
                     println!(
@@ -519,10 +533,10 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                     match assemble_r(instr_info, args) {
                         Ok(assembled_r) => {
                             if write_u32(&output_file, assembled_r).is_err() {
-                                return Err("Failed to write to output binary");
+                                return Err("Failed to write to output binary".to_string());
                             }
                         }
-                        Err(e) => return Err(e),
+                        Err(e) => return Err(e.to_string()),
                     }
                 } else if let Ok(instr_info) = i_operation(mnemonic) {
                     println!("-----------------------------------");
@@ -531,10 +545,10 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                     match assemble_i(instr_info, args, &labels, current_addr) {
                         Ok(assembled_i) => {
                             if write_u32(&output_file, assembled_i).is_err() {
-                                return Err("Failed to write to output binary");
+                                return Err("Failed to write to output binary".to_string());
                             }
                         }
-                        Err(e) => return Err(e),
+                        Err(e) => return Err(e.to_string()),
                     }
                 } else if let Ok(instr_info) = j_operation(mnemonic) {
                     println!("-----------------------------------");
@@ -543,19 +557,26 @@ pub fn assemble(args: &Args) -> Result<(), &'static str> {
                     match assemble_j(instr_info, args, &labels) {
                         Ok(assembled_j) => {
                             if write_u32(&output_file, assembled_j).is_err() {
-                                return Err("Failed to write to output binary");
+                                return Err("Failed to write to output binary".to_string());
                             }
                         }
-                        Err(e) => return Err(e),
+                        Err(e) => return Err(e.to_string()),
                     }
                 } else {
-                    return Err("Failed to match instruction");
+                    return Err("Failed to match instruction".to_string());
                 }
             }
             _ => continue,
         };
 
         current_addr += MIPS_INSTR_BYTE_WIDTH;
+        line_number += 1;
+    }
+
+    if program_arguments.line_info {
+        if let Err(e) = lineinfo_export(lineinfo_fn, lineinfo) {
+            return Err(e.to_string());
+        }
     }
 
     Ok(())
