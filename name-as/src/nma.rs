@@ -169,13 +169,20 @@ fn j_operation(mnemonic: &str) -> Result<J, &'static str> {
 
 /// Write a u32 into a file, zero-padded to 32 bits (4 bytes)
 pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
+    fn convert_endianness(input: u32) -> u32 {
+        ((input & 0x000000FF) << 24)
+            | ((input & 0x0000FF00) << 8)
+            | ((input & 0x00FF0000) >> 8)
+            | ((input & 0xFF000000) >> 24)
+    }
+
     const PADDED_LENGTH: usize = 4;
 
     // Create a 4-length buffer
     let mut padded_buffer: [u8; PADDED_LENGTH] = [0; PADDED_LENGTH];
 
     // Convert data into bytes
-    let bytes: [u8; PADDED_LENGTH] = data.to_be_bytes();
+    let bytes: [u8; PADDED_LENGTH] = (convert_endianness(data)).to_be_bytes();
 
     // Copy bytes into buffer at offset s.t. value is left-padded with 0s
     let copy_index = PADDED_LENGTH - bytes.len();
@@ -494,7 +501,6 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
 
     // Assign addresses to labels
     let mut current_addr: u32 = TEXT_ADDRESS_BASE;
-    let mut line_number: u32 = 1;
     let mut labels: HashMap<&str, u32> = HashMap::new();
     for sub_cst in &vernac_sequence {
         match sub_cst {
@@ -519,7 +525,7 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                 // Update line info
                 lineinfo.push(LineInfo {
                     instr_addr: current_addr,
-                    line_number: line_number,
+                    line_number: 0,
                     line_contents: instr_to_str(mnemonic, &args),
                     psuedo_op: "".to_string(),
                 });
@@ -570,7 +576,6 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
         };
 
         current_addr += MIPS_INSTR_BYTE_WIDTH;
-        line_number += 1;
     }
 
     if program_arguments.line_info {
