@@ -320,12 +320,10 @@ loop {
       );
       server.respond(rsp)?;
 
-      if let Err(event) = result {
-        if let ExecutionErrors::Event{event} = event {
-          if event == ExecutionEvents::ProgramComplete {
-            server.send_event(Event::Terminated(None))?;
-            server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
-          }
+      if let Err(ExecutionErrors::Event{event}) = result {
+        if event == ExecutionEvents::ProgramComplete {
+          server.send_event(Event::Terminated(None))?;
+          server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
         }
       }
       else {
