@@ -322,8 +322,8 @@ impl Mips {
                 Instructions::R(Rtype {
                     // These are all five-bit fields
                     rs: (instruction >> 21 & 0b11111) as usize,
-                    rd: (instruction >> 16 & 0b11111) as usize,
-                    rt: (instruction >> 11 & 0b11111) as usize,
+                    rt: (instruction >> 16 & 0b11111) as usize,
+                    rd: (instruction >> 11 & 0b11111) as usize,
                     shamt: (instruction >> 6 & 0b11111) as u8,
                     // This is a six-bit field
                     funct: (instruction & 0b111111) as u8
