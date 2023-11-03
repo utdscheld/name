@@ -2,11 +2,10 @@
 // Import the module and reference it with the alias vscode in your code below
 'use strict';
 import * as vscode from 'vscode';
-import { HelloWorldPanel } from './HelloWorldPanel';
 import * as Net from 'net';
 import { activateNameDebug } from './activateNameDebug';
 import * as path from 'path';
-import { config } from 'process';
+const { spawn } = require('child_process');
 
 const termName = "NAME Emulator";
 
@@ -22,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
 			if (!configuration) {
 				vscode.window.showErrorMessage("Failed to find NAME configurations");
 				return;
-			}			
+			}
 
 			const namePath = configuration.get('namePath', '');
 			if (namePath.length < 1) {
@@ -33,6 +32,25 @@ export function activate(context: vscode.ExtensionContext) {
 			const nameASPath = path.join(namePath, 'name-as');
 			const nameDefaultCfgPath = path.join(nameASPath, 'configs/default.toml');
 			const nameEMUPath = path.join(namePath, 'name-emu');
+			const nameEXTPath = path.join(namePath, 'name-ext');
+
+			// Start the extension with 'npm run watch'
+			// We def don't need the watch feature in the prod distribution but we can remove that later
+			const child = spawn(
+				'npm', ['run', 'watch'], {
+					cwd: nameEXTPath
+				}
+			);
+
+			child.on('error', (_) => {
+				vscode.window.showErrorMessage(`Failed to start name-ext, please ensure you have npm installed`);
+			});
+
+			child.on('exit', (code, _) => {
+				if (code !== 0) {
+					vscode.window.showErrorMessage(`name-ext exited with code ${code}`);
+				}
+			});
 
 			var editor = vscode.window.activeTextEditor;			
 			if (editor) {
@@ -59,8 +77,13 @@ export function activate(context: vscode.ExtensionContext) {
 				// Exit when emulator quits
 				terminal.sendText('exit');
 			}
+
+			// Kill child process if it's still alive
+			if (child) {
+				child.kill();
+			}
 		})
-	)
+	);
 
 	// debug adapters can be run in different ways by using a vscode.DebugAdapterDescriptorFactory:
 	switch (runMode) {
