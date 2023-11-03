@@ -104,6 +104,17 @@
         }
       ]
     },
+    "configuration": {
+      "type": "object",
+      "title": "name-ext",
+      "properties": {
+        "name-ext.namePath" : {
+          "type": "string",
+          "default": "~/Desktop/name",
+          "description": "The path to your NAME installation"
+        }
+      }
+    },
     "commands": [
       {
         "command": "extension.vsname.debugEditorContents",
@@ -124,8 +135,8 @@
         "title": "Toggle between decimal and hex formatting"
       },
       {
-        "command": "extension.vsname.helloWorld",
-        "title": "Hello World"
+        "command": "extension.vsname.startEmu",
+        "title": "Start Emulator"
       }
     ],
 		"languages": [

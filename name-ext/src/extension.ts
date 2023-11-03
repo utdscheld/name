@@ -5,19 +5,62 @@ import * as vscode from 'vscode';
 import { HelloWorldPanel } from './HelloWorldPanel';
 import * as Net from 'net';
 import { activateNameDebug } from './activateNameDebug';
+import * as path from 'path';
+import { config } from 'process';
+
+const termName = "NAME Emulator";
 
 const runMode: 'external' | 'server' | 'namedPipeServer' | 'inline' = 'server';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	console.log('Congratulations, your extension "testinghi" is now active!');
-
 	context.subscriptions.push(
-		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
-			HelloWorldPanel.createOrShow(context.extensionUri);
+		vscode.commands.registerCommand("extension.vsname.startEmu", () => {
+			// User configuration
+			var configuration = vscode.workspace.getConfiguration('name-ext');
+			if (!configuration) {
+				vscode.window.showErrorMessage("Failed to find NAME configurations");
+				return;
+			}			
+
+			const namePath = configuration.get('namePath', '');
+			if (namePath.length < 1) {
+				vscode.window.showErrorMessage(`Failed to find a path for NAME, please set the path in VSCode's User Settings under name-ext`);
+				return;
+			}
+
+			const nameASPath = path.join(namePath, 'name-as');
+			const nameDefaultCfgPath = path.join(nameASPath, 'configs/default.toml');
+			const nameEMUPath = path.join(namePath, 'name-emu');
+
+			var editor = vscode.window.activeTextEditor;			
+			if (editor) {
+				// Get currently-open file path
+				var currentlyOpenTabFilePath = editor.document.fileName;
+				var currentlyOpenTabFileName = path.basename(currentlyOpenTabFilePath);
+
+				const terminalOptions = { name: termName, closeOnExit: true };
+				var terminal = vscode.window.terminals.find(terminal => terminal.name === termName);
+				terminal = terminal ? terminal : vscode.window.createTerminal(terminalOptions);
+				terminal.show();
+				terminal.sendText('clear');
+
+				// Build and run assembler
+				terminal.sendText(`cd ${nameASPath}`);
+				terminal.sendText('cargo build --release');
+				terminal.sendText(`cargo run ${nameDefaultCfgPath} ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o`);
+				
+				// Build and run emulator
+				terminal.sendText(`cd ${nameEMUPath}`);
+				terminal.sendText('cargo build --release');
+				terminal.sendText(`cargo run 63321 ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o`);
+
+				// Exit when emulator quits
+				terminal.sendText('exit');
+			}
 		})
-	);
+	)
 
 	// debug adapters can be run in different ways by using a vscode.DebugAdapterDescriptorFactory:
 	switch (runMode) {
