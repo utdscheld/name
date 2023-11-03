@@ -45,7 +45,14 @@ fn base_parse(input: &str) -> Result<u32, &'static str> {
 }
 
 const TEXT_ADDRESS_BASE: u32 = 0x400000;
+const DATA_ADDRESS_BASE: u32 = 0x10000000;
 const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
+
+// Controls whether data is being assembled into .text, .data, etc
+enum AssemblyMode {
+    TextMode,
+    DataMode,
+}
 
 /// The form of an R-type instruction, specificially
 /// which arguments it expects in which order
@@ -392,7 +399,7 @@ fn assemble_i(
             rt = assemble_reg(i_args[1])?;
             match labels.get(i_args[2]) {
                 // Subtract byte width due to branch delay
-                Some(v) => imm = ((*v) - instr_address - MIPS_INSTR_BYTE_WIDTH) as u16,
+                Some(v) => imm = ((*v) - instr_address) as u16,
                 None => return Err("Undeclared label"),
             }
         }
@@ -490,6 +497,48 @@ fn assemble_j(
 use crate::parser::*;
 use pest::Parser;
 
+pub fn preprocess(input: String) -> String {
+    let mut out = Vec::new();
+
+    let mut eqv: HashMap<&str, &str> = HashMap::new();
+
+    for mut line in input.lines() {
+        line = line.trim();
+        let mut tokens: Vec<&str> = line.split_whitespace().collect();
+
+        // Replace via eqv
+        tokens = tokens
+            .iter()
+            .map(|token| {
+                if let Some(replacement) = eqv.get(*token) {
+                    *replacement
+                } else {
+                    *token
+                }
+            })
+            .collect();
+
+        // Filter comments
+        if let Some(pos) = line.find('#') {
+            line = &line[0..pos]; // Remove the comment part
+        }
+
+        // Handle .eqv directives
+        if tokens[0] == ".eqv" {
+            println!("Eqv found: {} {}", tokens[1], tokens[2]);
+            eqv.insert(tokens[1], tokens[2]);
+        }
+
+        if !line.is_empty() {
+            out.push(line);
+        }
+    }
+
+    out.join("\n")
+
+    // Handle .include directives
+}
+
 // General assembler entrypoint
 pub fn assemble(program_arguments: &Args) -> Result<(), String> {
     // IO Setup
@@ -502,10 +551,13 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
     };
 
     // Read input
-    let file_contents: String = match fs::read_to_string(input_fn) {
+    let mut file_contents: String = match fs::read_to_string(input_fn) {
         Ok(v) => v,
         Err(_) => return Err("Failed to read input file contents".to_string()),
     };
+
+    // Preprocess
+    file_contents = preprocess(file_contents);
 
     // Parse into CST
     let cst = parse_rule(
@@ -526,24 +578,31 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
         vec![cst]
     };
 
+    // General setup
+    let mut _assembly_mode = AssemblyMode::TextMode;
+    let mut text_section_address: u32 = TEXT_ADDRESS_BASE;
+
     // Assign addresses to labels
-    let mut current_addr: u32 = TEXT_ADDRESS_BASE;
     let mut labels: HashMap<&str, u32> = HashMap::new();
     for sub_cst in &vernac_sequence {
         match sub_cst {
             MipsCST::Label(label_str) => {
-                println!("Inserting label {} at {:x}", label_str, current_addr);
-                labels.insert(label_str, current_addr);
+                println!(
+                    "Inserting label {} at {:x}",
+                    label_str, text_section_address
+                );
+                labels.insert(label_str, text_section_address);
                 continue;
             }
-            MipsCST::Instruction(_, _) => (),
+            MipsCST::Directive(_, _) => continue,
             MipsCST::Sequence(_) => unreachable!(),
+            _ => (),
         };
 
-        current_addr += MIPS_INSTR_BYTE_WIDTH
+        text_section_address += MIPS_INSTR_BYTE_WIDTH
     }
 
-    current_addr = TEXT_ADDRESS_BASE;
+    text_section_address = TEXT_ADDRESS_BASE;
 
     // Assemble instructions
     for sub_cst in vernac_sequence {
@@ -551,7 +610,7 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
             MipsCST::Instruction(mnemonic, args) => {
                 // Update line info
                 lineinfo.push(LineInfo {
-                    instr_addr: current_addr,
+                    instr_addr: text_section_address,
                     line_number: 0,
                     line_contents: instr_to_str(mnemonic, &args),
                     psuedo_op: "".to_string(),
@@ -578,7 +637,7 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                         mnemonic, instr_info.opcode, args
                     );
 
-                    match assemble_i(instr_info, args, &labels, current_addr) {
+                    match assemble_i(instr_info, args, &labels, text_section_address) {
                         Ok(assembled_i) => {
                             if write_u32(&output_file, assembled_i).is_err() {
                                 return Err("Failed to write to output binary".to_string());
@@ -605,10 +664,16 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                     return Err("Failed to match instruction".to_string());
                 }
             }
+            MipsCST::Directive(mnemonic, args) => match mnemonic {
+                "text" => _assembly_mode = AssemblyMode::TextMode,
+                "data" => _assembly_mode = AssemblyMode::DataMode,
+                "eqv" => (),
+                _ => return Err(format!("Directive .{} not yet supported", mnemonic).to_string()),
+            },
             _ => continue,
         };
 
-        current_addr += MIPS_INSTR_BYTE_WIDTH;
+        text_section_address += MIPS_INSTR_BYTE_WIDTH;
     }
 
     if program_arguments.line_info {

@@ -1,11 +1,14 @@
-main:   
+# Hello World
+.text
+.eqv FIFTY 50
+main: # Hello Test
    add $t0,$t2,$t3
    sub $t4, $t5, $t6
    sll $s0, $s0, 5
    srl $s5, $s7, 10
    xor $t7, $t8, $t9
-   lui $t0, 50
-   ori $t0, $t1, 50
+   lui $t0, FIFTY
+   ori $t0, $t1, FIFTY
    ori $t0, $t0, 0x50
    ori $t0, $t0, 050
    ori $t0, $t0, 0b1010
