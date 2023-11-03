@@ -5,6 +5,8 @@ use pest_derive::Parser;
 #[grammar_inline = r#"
 alpha = _{ 'a'..'z' | 'A'..'Z' }
 digit = _{ '0'..'9' }
+hex   = _{ "0x" ~ (digit | 'a'..'f' | 'A'..'F')+ }
+binary = _{ "0b" ~ ('0'..'1')+ }
 WHITESPACE = _{ " " | NEWLINE }
 
 ident = @{ alpha ~ (alpha | digit)* }
@@ -12,7 +14,7 @@ ident = @{ alpha ~ (alpha | digit)* }
 label = { ident ~ ":" }
 
 register = @{ "$" ~ ident }
-instruction_arg = @{ ident | register | digit+ }
+instruction_arg = @{ ident | register | hex+ | binary+ | digit+ }
 standard_args = _{ 
    instruction_arg ~ ("," ~ WHITESPACE* ~ instruction_arg){, 2}
 }
