@@ -1,7 +1,7 @@
 /// NAME Mips Assembler
 use crate::args::Args;
+use crate::config::Config;
 use crate::lineinfo::*;
-use crate::parser::print_cst;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -504,7 +504,23 @@ pub fn preprocess(input: String) -> String {
 
     for mut line in input.lines() {
         line = line.trim();
+
+        // Filter comments
+        if let Some(pos) = line.find('#') {
+            line = &line[0..pos]; // Remove the comment part
+        }
+
+        if line.is_empty() {
+            continue;
+        }
+
         let mut tokens: Vec<&str> = line.split_whitespace().collect();
+
+        // Handle .eqv directives
+        if tokens[0] == ".eqv" {
+            eqv.insert(tokens[1], tokens[2]);
+            continue;
+        }
 
         // Replace via eqv
         tokens = tokens
@@ -518,29 +534,14 @@ pub fn preprocess(input: String) -> String {
             })
             .collect();
 
-        // Filter comments
-        if let Some(pos) = line.find('#') {
-            line = &line[0..pos]; // Remove the comment part
-        }
-
-        // Handle .eqv directives
-        if tokens[0] == ".eqv" {
-            println!("Eqv found: {} {}", tokens[1], tokens[2]);
-            eqv.insert(tokens[1], tokens[2]);
-        }
-
-        if !line.is_empty() {
-            out.push(line);
-        }
+        out.push(tokens.join(" "));
     }
 
     out.join("\n")
-
-    // Handle .include directives
 }
 
 // General assembler entrypoint
-pub fn assemble(program_arguments: &Args) -> Result<(), String> {
+pub fn assemble(program_config: &Config, program_arguments: &Args) -> Result<(), String> {
     // IO Setup
     let input_fn = &program_arguments.input_as;
     let output_fn = &program_arguments.output_as;
@@ -557,7 +558,11 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
     };
 
     // Preprocess
-    file_contents = preprocess(file_contents);
+    file_contents = if program_config.preprocess {
+        preprocess(file_contents)
+    } else {
+        file_contents
+    };
 
     // Parse into CST
     let cst = parse_rule(
@@ -566,7 +571,6 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
             .next()
             .unwrap(),
     );
-    print_cst(&cst);
 
     // Set up line info
     let lineinfo_fn = format!("{}.li", &program_arguments.output_as);

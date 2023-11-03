@@ -1,2 +1,3 @@
 config_name = "Default MIPS"
+preprocess = true
 as_cmd = []

@@ -9,12 +9,14 @@ use std::fs;
 pub struct Config {
     pub config_name: String,
     pub as_cmd: Vec<String>,
+    pub preprocess: bool,
 }
 
 pub fn backup_config() -> Config {
     Config {
         config_name: "backup config".to_string(),
         as_cmd: ["".to_string()].to_vec(),
+        preprocess: true,
     }
 }
 

@@ -6,6 +6,7 @@ pub struct Args {
     pub input_as: String,
     pub output_as: String,
     pub line_info: bool,
+    pub only_preprocess: bool,
 }
 
 fn help() {
@@ -18,6 +19,7 @@ fn help() {
     println!("Optional:");
     println!("  --lineinfo");
     println!("   -l          Enables line information export");
+    println!("  --preprocess Only preprocess the input assembly file");
 }
 
 pub fn parse_args() -> Result<Args, &'static str> {
@@ -26,6 +28,7 @@ pub fn parse_args() -> Result<Args, &'static str> {
         input_as: String::new(),
         output_as: String::new(),
         line_info: false,
+        only_preprocess: false,
     };
     let args_strings: Vec<String> = env::args().collect();
 
@@ -39,6 +42,7 @@ pub fn parse_args() -> Result<Args, &'static str> {
         let mut parsed_option = true;
         match arg.as_str() {
             "-l" | "--lineinfo" => args.line_info = true,
+            "--preprocess" => args.only_preprocess = true,
             _ => parsed_option = false,
         };
         if parsed_option {
