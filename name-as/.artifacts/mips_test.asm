@@ -10,6 +10,8 @@ main:
    ori $t0, $t0, 050
    ori $t0, $t0, 0b1010
    lb  $t0, 0x50($t1)
+   lb  $t0, 50($t1)
+   lb  $t0, ($t1)
    beq $s0, $s0, test
 test:
    j   test

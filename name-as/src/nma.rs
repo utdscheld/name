@@ -369,13 +369,22 @@ fn assemble_i(
             }
         }
         IForm::RtImmRs => {
-            enforce_length(&i_args, 3)?;
-            rt = assemble_reg(i_args[0])?;
-            imm = match base_parse(i_args[1]) {
+            // Immediate can default to 0 if not included in instructions
+            // such as 'ld $t0, ($t1)'
+            let i_args_catch = if i_args.len() == 2 {
+                let mut c = i_args.clone();
+                c.insert(1, "0");
+                c
+            } else {
+                i_args
+            };
+            enforce_length(&i_args_catch, 3)?;
+            rt = assemble_reg(i_args_catch[0])?;
+            imm = match base_parse(i_args_catch[1]) {
                 Ok(v) => v as u16,
                 Err(_) => return Err("Failed to parse imm"),
             };
-            rs = assemble_reg(i_args[2])?;
+            rs = assemble_reg(i_args_catch[2])?;
         }
         IForm::RsRtLabel => {
             enforce_length(&i_args, 3)?;
