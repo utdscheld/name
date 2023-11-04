@@ -61,6 +61,7 @@ enum AssemblyMode {
 enum RForm {
     RdRsRt,
     RdRtShamt,
+    Rs,
 }
 
 /// The variable components of an R-type instruction
@@ -113,10 +114,30 @@ pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
             funct: 0x02,
             form: RForm::RdRtShamt,
         }),
+        "or" => Ok(R {
+            shamt: 0,
+            funct: 0x25,
+            form: RForm::RdRsRt,
+        }),
+        "nor" => Ok(R {
+            shamt: 0,
+            funct: 0x27,
+            form: RForm::RdRsRt,
+        }),
         "xor" => Ok(R {
             shamt: 0,
             funct: 0x26,
             form: RForm::RdRsRt,
+        }),
+        "slt" => Ok(R {
+            shamt: 0,
+            funct: 0x2a,
+            form: RForm::RdRsRt,
+        }),
+        "jr" => Ok(R {
+            shamt: 0,
+            funct: 0x08,
+            form: RForm::Rs,
         }),
         _ => Err("Failed to match R-instr mnemonic"),
     }
@@ -180,6 +201,14 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
         "bne" => Ok(I {
             opcode: 0x5,
             form: IForm::RsRtLabel,
+        }),
+        "slti" => Ok(I {
+            opcode: 0xa,
+            form: IForm::RtRsImm,
+        }),
+        "addi" => Ok(I {
+            opcode: 0x8,
+            form: IForm::RtRsImm,
         }),
         _ => Err("Failed to match I-instr mnemonic"),
     }
@@ -280,16 +309,16 @@ fn assemble_reg(mnemonic: &str) -> Result<u8, &'static str> {
 }
 
 /// Enforce a specific length for a given vector
-fn enforce_length(arr: &Vec<&str>, len: usize) -> Result<u32, &'static str> {
+fn enforce_length(arr: &Vec<&str>, len: usize) -> Result<u32, String> {
     if arr.len() != len {
-        Err("Failed length enforcement")
+        Err(format!("Expected {} arguments but got {}", len, arr.len()))
     } else {
         Ok(0)
     }
 }
 
 /// Assembles an R-type instruction
-fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
+fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, String> {
     let mut rs: u8;
     let mut rt: u8;
     let mut rd: u8;
@@ -310,8 +339,15 @@ fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
             rt = assemble_reg(r_args[1])?;
             shamt = match base_parse(r_args[2]) {
                 Ok(v) => v as u8,
-                Err(_) => return Err("Failed to parse shamt"),
+                Err(_) => return Err("Failed to parse shamt".to_string()),
             }
+        }
+        RForm::Rs => {
+            enforce_length(&r_args, 1)?;
+            rd = 0;
+            rs = assemble_reg(r_args[0])?;
+            rt = 0;
+            shamt = r_struct.shamt;
         }
     };
 
@@ -362,7 +398,7 @@ fn assemble_i(
     i_args: Vec<&str>,
     labels: &HashMap<&str, u32>,
     instr_address: u32,
-) -> Result<u32, &'static str> {
+) -> Result<u32, String> {
     let mut rs: u8;
     let mut rt: u8;
     let imm: u16;
@@ -374,7 +410,7 @@ fn assemble_i(
             rt = assemble_reg(i_args[0])?;
             imm = match base_parse(i_args[1]) {
                 Ok(v) => v as u16,
-                Err(_) => return Err("Failed to parse imm"),
+                Err(_) => return Err(format!("Failed to parse immediate {}", i_args[1])),
             }
         }
         IForm::RtImmRs => {
@@ -385,13 +421,13 @@ fn assemble_i(
                 c.insert(1, "0");
                 c
             } else {
-                i_args
+                i_args.clone()
             };
             enforce_length(&i_args_catch, 3)?;
             rt = assemble_reg(i_args_catch[0])?;
             imm = match base_parse(i_args_catch[1]) {
                 Ok(v) => v as u16,
-                Err(_) => return Err("Failed to parse imm"),
+                Err(_) => return Err(format!("Failed to parse immediate {}", i_args[1])),
             };
             rs = assemble_reg(i_args_catch[2])?;
         }
@@ -401,8 +437,8 @@ fn assemble_i(
             rt = assemble_reg(i_args[1])?;
             match labels.get(i_args[2]) {
                 // Subtract byte width due to branch delay
-                Some(v) => imm = ((*v) - instr_address) as u16,
-                None => return Err("Undeclared label"),
+                Some(v) => imm = (((*v) - instr_address) / MIPS_INSTR_BYTE_WIDTH) as u16,
+                None => return Err(format!("Undeclared label {}", i_args[2])),
             }
         }
         IForm::RtRsImm => {
@@ -411,7 +447,7 @@ fn assemble_i(
             rs = assemble_reg(i_args[1])?;
             imm = match base_parse(i_args[2]) {
                 Ok(v) => v as u16,
-                Err(_) => return Err("Failed to parse imm"),
+                Err(_) => return Err(format!("Failed to parse immediate {}", i_args[2])),
             };
         }
     };
@@ -453,11 +489,7 @@ fn assemble_i(
 }
 
 /// Assembles a J-type instruction
-fn assemble_j(
-    j_struct: J,
-    j_args: Vec<&str>,
-    labels: &HashMap<&str, u32>,
-) -> Result<u32, &'static str> {
+fn assemble_j(j_struct: J, j_args: Vec<&str>, labels: &HashMap<&str, u32>) -> Result<u32, String> {
     enforce_length(&j_args, 1)?;
 
     let jump_address: u32 = labels[j_args[0]];
@@ -466,7 +498,10 @@ fn assemble_j(
     let mut masked_jump_address = mask_u32(jump_address, 28)?;
     println!("Jump address masked: {}", masked_jump_address);
     if jump_address != masked_jump_address {
-        return Err("Tried to assemble illegal jump address");
+        return Err(format!(
+            "Tried to assemble illegal jump address {}",
+            jump_address
+        ));
     }
 
     // Byte-align jump address
@@ -686,7 +721,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
                 if let Ok(instr_info) = r_operation(mnemonic) {
                     println!("-----------------------------------");
                     println!(
-                        "[R] {} - shamt [{:x}] - funct [{:x}] - args [{:?}]",
+                        "[R] {} - shamt [{:x}] - funct [{:x}] - args {:?}",
                         mnemonic, instr_info.shamt, instr_info.funct, args
                     );
                     match assemble_r(instr_info, args) {
@@ -700,7 +735,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
                 } else if let Ok(instr_info) = i_operation(mnemonic) {
                     println!("-----------------------------------");
                     println!(
-                        "[I] {} - opcode [{:x}] - args [{:?}]",
+                        "[I] {} - opcode [{:x}] - args {:?}",
                         mnemonic, instr_info.opcode, args
                     );
 
@@ -715,7 +750,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
                 } else if let Ok(instr_info) = j_operation(mnemonic) {
                     println!("-----------------------------------");
                     println!(
-                        "[J] {} - opcode [{:x}] - args [{:?}]",
+                        "[J] {} - opcode [{:x}] - args {:?}",
                         mnemonic, instr_info.opcode, args
                     );
 

@@ -26,6 +26,12 @@ main: # Hello Test
    lb  $t0, 50($t1)
    lb  $t0, ($t1)
    beq $s0, $s0, test
+   or $t0, $s5, $fp
+   or $s3, $s5, $sp
+   slt $t9, $zero, $zero
+   jr $ra
+   slti $t6, $zero, 0x789
+   addi $ra, $ra, 8
 test:
-   j   test
+   j   main
    jal test
