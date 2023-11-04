@@ -497,10 +497,24 @@ fn assemble_j(
 use crate::parser::*;
 use pest::Parser;
 
+fn scan_macro_args(tokens: &Vec<String>) -> Vec<String> {
+    tokens
+        .to_vec()
+        .iter()
+        .map(|token| token.chars().filter(|c| !"(),".contains(*c)).collect())
+        .collect()
+}
+
 pub fn preprocess(input: String) -> String {
     let mut out = Vec::new();
 
-    let mut eqv: HashMap<&str, &str> = HashMap::new();
+    let mut eqv: HashMap<String, String> = HashMap::new();
+    let mut mac: HashMap<String, (Vec<String>, String)> = HashMap::new();
+
+    let mut collecting_macro = false;
+    let mut macro_name: String = "".to_string();
+    let mut macro_args: Vec<String> = Vec::new();
+    let mut macro_buf = String::new();
 
     for mut line in input.lines() {
         line = line.trim();
@@ -514,27 +528,60 @@ pub fn preprocess(input: String) -> String {
             continue;
         }
 
-        let mut tokens: Vec<&str> = line.split_whitespace().collect();
+        let mut tokens: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
 
         // Handle .eqv directives
         if tokens[0] == ".eqv" {
-            eqv.insert(tokens[1], tokens[2]);
+            eqv.insert(tokens[1].clone(), tokens[2].clone());
+            continue;
+        }
+
+        // Handle .macro directives
+        if tokens[0] == ".macro" {
+            collecting_macro = true;
+            macro_name = tokens[1].clone();
+            // Remove the '(', ')', and ',',
+            macro_args = scan_macro_args(&tokens[2..].to_vec());
+            continue;
+        } else if tokens[0] == ".end_macro" {
+            collecting_macro = false;
+            mac.insert(macro_name.clone(), (macro_args.clone(), macro_buf.clone()));
+            println!("{} {:?} {}", macro_name, macro_args, macro_buf);
             continue;
         }
 
         // Replace via eqv
-        tokens = tokens
+        let mut tokens: Vec<String> = tokens
             .iter()
             .map(|token| {
-                if let Some(replacement) = eqv.get(*token) {
-                    *replacement
-                } else {
-                    *token
+                let mut subbed_token = token.to_string();
+                for eqv_key in eqv.keys() {
+                    subbed_token = subbed_token.replace(eqv_key, eqv.get(eqv_key).unwrap())
                 }
+                subbed_token.to_owned()
             })
-            .collect();
+            .collect::<Vec<String>>();
 
-        out.push(tokens.join(" "));
+        // Replace via macro
+        if let Some(scanned_macro) = mac.get(tokens[0].as_str()) {
+            let input_args: Vec<String> = scan_macro_args(&tokens[1..].to_vec());
+            tokens.clear();
+            let mut subbed_in_line = String::new();
+            for macro_line in scanned_macro.1.lines() {
+                subbed_in_line = macro_line.to_string().clone();
+                for (index, arg) in scanned_macro.0.iter().enumerate() {
+                    subbed_in_line = subbed_in_line.replace(arg, &input_args[index]);
+                }
+                out.push(subbed_in_line);
+            }
+            continue;
+        }
+
+        if collecting_macro {
+            macro_buf += (tokens.join(" ") + "\n").as_str();
+        } else {
+            out.push(tokens.join(" "));
+        }
     }
 
     out.join("\n")
@@ -563,6 +610,7 @@ pub fn assemble(program_config: &Config, program_arguments: &Args) -> Result<(),
     } else {
         file_contents
     };
+    println!("{}", file_contents);
 
     // Parse into CST
     let cst = parse_rule(
@@ -671,7 +719,7 @@ pub fn assemble(program_config: &Config, program_arguments: &Args) -> Result<(),
             MipsCST::Directive(mnemonic, args) => match mnemonic {
                 "text" => _assembly_mode = AssemblyMode::TextMode,
                 "data" => _assembly_mode = AssemblyMode::DataMode,
-                "eqv" => (),
+                "eqv" | "macro" => (),
                 _ => return Err(format!("Directive .{} not yet supported", mnemonic).to_string()),
             },
             _ => continue,

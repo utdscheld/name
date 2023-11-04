@@ -18,8 +18,9 @@ ident = @{ alpha ~ (alpha | digit)* }
 
 label = { ident ~ ":" }
 
+macro_param = @{ "%" ~ ident }
 register = @{ "$" ~ ident }
-instruction_arg = @{ ident | register | integer }
+instruction_arg = @{ ident | macro_param | register | integer }
 standard_args = _{ 
    instruction_arg ~ ("," ~ WHITESPACE* ~ instruction_arg){, 2}
 }
@@ -27,17 +28,21 @@ mem_access_args = _{ instruction_arg ~ "," ~ integer? ~ "(" ~ instruction_arg ~ 
 instruction_args = _{ mem_access_args | standard_args }
 instruction = { ident ~ instruction_args }
 
+no_arg_directives = @{
+    "text"
+    | "data"
+    | "end_macro"
+}
+
 num_arg_directives = @{ 
     "align"
     | "byte"
-    | "data"
     | "double"
     | "float"
     | "half"
     | "kdata"
     | "ktext"
     | "space"
-    | "text"
     | "word"
 }
 
@@ -64,10 +69,12 @@ directive = {
         (
             number ~ ("," ~ WHITESPACE* ~ number)*
         )*
+    ) | (
+        no_arg_directives
     ))
 }
 
-vernacular = { SOI ~ ((directive | instruction | label))* }
+vernacular = { SOI ~ ((directive | instruction | label ))* }
 "##]
 pub struct MipsParser;
 

@@ -1,12 +1,20 @@
 # Hello World
 .text
+
 .eqv FIFTY 50
+.macro test (%a, %b, %c)
+   add %a, %b, %c
+   sub %c, %b, %a
+   lb %a, FIFTY(%c)
+.end_macro
+
 main: # Hello Test
    add $t0,$t2,$t3
    sub $t4, $t5, $t6
    sll $s0, $s0, 5
    srl $s5, $s7, 10
    xor $t7, $t8, $t9
+   test ($t0, $t1, $t2)
    lui $t0, FIFTY
    ori $t0, $t1, FIFTY
    ori $t0, $t0, 0x50
