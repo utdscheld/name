@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
 use std::path::PathBuf;
 use std::str;
 
@@ -30,12 +29,12 @@ fn mask_u32(n: u32, x: u8) -> Result<u32, &'static str> {
 }
 
 fn base_parse(input: &str) -> Result<u32, &'static str> {
-    if input.starts_with("0x") {
+    if let Some(literal) = input.strip_prefix("0x") {
         // Hexadecimal
-        u32::from_str_radix(&input[2..], 16).map_err(|_| "Failed to parse as hexadecimal")
-    } else if input.starts_with("0b") {
+        u32::from_str_radix(literal, 16).map_err(|_| "Failed to parse as hexadecimal")
+    } else if let Some(literal) = input.strip_prefix("0b") {
         // Binary
-        u32::from_str_radix(&input[2..], 2).map_err(|_| "Failed to parse as binary")
+        u32::from_str_radix(literal, 2).map_err(|_| "Failed to parse as binary")
     } else if input.starts_with('0') && input.len() > 1 {
         // Octal
         u32::from_str_radix(&input[1..], 8).map_err(|_| "Failed to parse as octal")
@@ -48,7 +47,7 @@ fn base_parse(input: &str) -> Result<u32, &'static str> {
 }
 
 const TEXT_ADDRESS_BASE: u32 = 0x400000;
-const DATA_ADDRESS_BASE: u32 = 0x10000000;
+const _DATA_ADDRESS_BASE: u32 = 0x10000000;
 const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 
 // Controls whether data is being assembled into .text, .data, etc
@@ -500,7 +499,7 @@ fn assemble_j(
 use crate::parser::*;
 use pest::Parser;
 
-fn scan_macro_args(tokens: &Vec<String>) -> Vec<String> {
+fn scan_macro_args(tokens: &[String]) -> Vec<String> {
     tokens
         .to_vec()
         .iter()
@@ -543,7 +542,7 @@ pub fn preprocess(mut input: String, input_as: &str) -> Result<String, String> {
             continue;
         }
 
-        let mut tokens: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
+        let tokens: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
 
         // Handle .eqv directives
         if tokens[0] == ".eqv" {
@@ -556,7 +555,7 @@ pub fn preprocess(mut input: String, input_as: &str) -> Result<String, String> {
             collecting_macro = true;
             macro_name = tokens[1].clone();
             // Remove the '(', ')', and ',',
-            macro_args = scan_macro_args(&tokens[2..].to_vec());
+            macro_args = scan_macro_args(&tokens[2..]);
             continue;
         } else if tokens[0] == ".end_macro" {
             collecting_macro = false;
@@ -578,11 +577,10 @@ pub fn preprocess(mut input: String, input_as: &str) -> Result<String, String> {
 
         // Replace via macro
         if let Some(scanned_macro) = mac.get(tokens[0].as_str()) {
-            let input_args: Vec<String> = scan_macro_args(&tokens[1..].to_vec());
+            let input_args: Vec<String> = scan_macro_args(&tokens[1..]);
             tokens.clear();
-            let mut subbed_in_line = String::new();
             for macro_line in scanned_macro.1.lines() {
-                subbed_in_line = macro_line.to_string().clone();
+                let mut subbed_in_line = macro_line.to_string().clone();
                 for (index, arg) in scanned_macro.0.iter().enumerate() {
                     subbed_in_line = subbed_in_line.replace(arg, &input_args[index]);
                 }
@@ -733,7 +731,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
                     return Err("Failed to match instruction".to_string());
                 }
             }
-            MipsCST::Directive(mnemonic, args) => match mnemonic {
+            MipsCST::Directive(mnemonic, _args) => match mnemonic {
                 "text" => _assembly_mode = AssemblyMode::TextMode,
                 "data" => _assembly_mode = AssemblyMode::DataMode,
                 "eqv" | "macro" => (),
