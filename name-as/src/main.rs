@@ -29,15 +29,15 @@ fn main() -> Result<(), String> {
     };
 
     if cmd_args.only_preprocess {
-        if let Ok(contents) = fs::read_to_string(cmd_args.input_as) {
-            println!("{}", nma::preprocess(contents));
+        if let Ok(contents) = fs::read_to_string(&cmd_args.input_as) {
+            println!("{}", nma::preprocess(contents, &cmd_args.input_as).unwrap());
         }
         return Ok(());
     }
 
     if config.as_cmd.is_empty() {
         // If no provided as config, default to NMA
-        assemble(&config, &cmd_args)?;
+        assemble(&config, cmd_args)?;
     } else {
         let mut temp_file: NamedTempFile = match NamedTempFile::new() {
             Ok(f) => f,
@@ -45,12 +45,16 @@ fn main() -> Result<(), String> {
         };
 
         if config.preprocess {
-            let input_file = match fs::read_to_string(cmd_args.input_as) {
+            let input_file = match fs::read_to_string(&cmd_args.input_as) {
                 Ok(v) => v,
                 Err(_) => return Err("Failed to read input file contents".to_string()),
             };
 
-            if let Err(e) = temp_file.write_all(nma::preprocess(input_file).as_bytes()) {
+            if let Err(e) = temp_file.write_all(
+                nma::preprocess(input_file, &cmd_args.input_as)
+                    .unwrap()
+                    .as_bytes(),
+            ) {
                 return Err(e.to_string());
             }
 

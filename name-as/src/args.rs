@@ -1,6 +1,6 @@
 use std::env;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Args {
     pub config_fn: String,
     pub input_as: String,

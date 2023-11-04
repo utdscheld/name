@@ -2,10 +2,13 @@
 use crate::args::Args;
 use crate::config::Config;
 use crate::lineinfo::*;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 use std::str;
 
 fn mask_u8(n: u8, x: u8) -> Result<u8, &'static str> {
@@ -505,7 +508,7 @@ fn scan_macro_args(tokens: &Vec<String>) -> Vec<String> {
         .collect()
 }
 
-pub fn preprocess(input: String) -> String {
+pub fn preprocess(mut input: String, input_as: &str) -> Result<String, String> {
     let mut out = Vec::new();
 
     let mut eqv: HashMap<String, String> = HashMap::new();
@@ -515,6 +518,18 @@ pub fn preprocess(input: String) -> String {
     let mut macro_name: String = "".to_string();
     let mut macro_args: Vec<String> = Vec::new();
     let mut macro_buf = String::new();
+
+    let input_path = PathBuf::from(input_as);
+    let base_folder = input_path.parent().unwrap();
+
+    let regex = Regex::new(".include \"(?P<include_fn>.*)\"").unwrap();
+    for (_, [include_fn]) in regex.captures_iter(&input.clone()).map(|c| c.extract()) {
+        let file_contents: String = match fs::read_to_string(base_folder.join(include_fn)) {
+            Ok(v) => v,
+            Err(_) => return Err("Failed to read input file contents".to_string()),
+        };
+        input = regex.replace_all(&input, file_contents).to_string();
+    }
 
     for mut line in input.lines() {
         line = line.trim();
@@ -546,7 +561,6 @@ pub fn preprocess(input: String) -> String {
         } else if tokens[0] == ".end_macro" {
             collecting_macro = false;
             mac.insert(macro_name.clone(), (macro_args.clone(), macro_buf.clone()));
-            println!("{} {:?} {}", macro_name, macro_args, macro_buf);
             continue;
         }
 
@@ -584,11 +598,11 @@ pub fn preprocess(input: String) -> String {
         }
     }
 
-    out.join("\n")
+    Ok(out.join("\n"))
 }
 
 // General assembler entrypoint
-pub fn assemble(program_config: &Config, program_arguments: &Args) -> Result<(), String> {
+pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), String> {
     // IO Setup
     let input_fn = &program_arguments.input_as;
     let output_fn = &program_arguments.output_as;
@@ -606,7 +620,10 @@ pub fn assemble(program_config: &Config, program_arguments: &Args) -> Result<(),
 
     // Preprocess
     file_contents = if program_config.preprocess {
-        preprocess(file_contents)
+        match preprocess(file_contents, input_fn) {
+            Ok(f) => f,
+            Err(e) => return Err(e.to_string()),
+        }
     } else {
         file_contents
     };

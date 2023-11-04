@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 pest = "2.7.4"
 pest_derive = "2.7.4"
+regex = "1.10.2"
 serde = { version = "1.0.188", features = ["derive"] }
 tempfile = "3.8.1"
 toml = "0.7.6"

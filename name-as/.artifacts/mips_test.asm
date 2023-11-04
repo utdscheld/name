@@ -1,6 +1,8 @@
 # Hello World
 .text
 
+.include "SysCalls.asm"
+
 .eqv FIFTY 50
 .macro test (%a, %b, %c)
    add %a, %b, %c
