@@ -26,6 +26,24 @@ fn mask_u32(n: u32, x: u8) -> Result<u32, &'static str> {
     }
 }
 
+fn base_parse(input: &str) -> Result<u32, &'static str> {
+    if input.starts_with("0x") {
+        // Hexadecimal
+        u32::from_str_radix(&input[2..], 16).map_err(|_| "Failed to parse as hexadecimal")
+    } else if input.starts_with("0b") {
+        // Binary
+        u32::from_str_radix(&input[2..], 2).map_err(|_| "Failed to parse as binary")
+    } else if input.starts_with('0') && input.len() > 1 {
+        // Octal
+        u32::from_str_radix(&input[1..], 8).map_err(|_| "Failed to parse as octal")
+    } else {
+        // Decimal
+        input
+            .parse::<u32>()
+            .map_err(|_| "Failed to parse as decimal")
+    }
+}
+
 const TEXT_ADDRESS_BASE: u32 = 0x400000;
 const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
 
@@ -281,8 +299,8 @@ fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
             rd = assemble_reg(r_args[0])?;
             rs = 0;
             rt = assemble_reg(r_args[1])?;
-            shamt = match r_args[2].parse::<u8>() {
-                Ok(v) => v,
+            shamt = match base_parse(r_args[2]) {
+                Ok(v) => v as u8,
                 Err(_) => return Err("Failed to parse shamt"),
             }
         }
@@ -345,19 +363,28 @@ fn assemble_i(
             enforce_length(&i_args, 2)?;
             rs = 0;
             rt = assemble_reg(i_args[0])?;
-            imm = match i_args[1].parse::<u16>() {
-                Ok(v) => v,
+            imm = match base_parse(i_args[1]) {
+                Ok(v) => v as u16,
                 Err(_) => return Err("Failed to parse imm"),
             }
         }
         IForm::RtImmRs => {
-            enforce_length(&i_args, 3)?;
-            rt = assemble_reg(i_args[0])?;
-            imm = match i_args[1].parse::<u16>() {
-                Ok(v) => v,
+            // Immediate can default to 0 if not included in instructions
+            // such as 'ld $t0, ($t1)'
+            let i_args_catch = if i_args.len() == 2 {
+                let mut c = i_args.clone();
+                c.insert(1, "0");
+                c
+            } else {
+                i_args
+            };
+            enforce_length(&i_args_catch, 3)?;
+            rt = assemble_reg(i_args_catch[0])?;
+            imm = match base_parse(i_args_catch[1]) {
+                Ok(v) => v as u16,
                 Err(_) => return Err("Failed to parse imm"),
             };
-            rs = assemble_reg(i_args[2])?;
+            rs = assemble_reg(i_args_catch[2])?;
         }
         IForm::RsRtLabel => {
             enforce_length(&i_args, 3)?;
@@ -373,8 +400,8 @@ fn assemble_i(
             enforce_length(&i_args, 3)?;
             rt = assemble_reg(i_args[0])?;
             rs = assemble_reg(i_args[1])?;
-            imm = match i_args[2].parse::<u16>() {
-                Ok(v) => v,
+            imm = match base_parse(i_args[2]) {
+                Ok(v) => v as u16,
                 Err(_) => return Err("Failed to parse imm"),
             };
         }
@@ -533,8 +560,8 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                 if let Ok(instr_info) = r_operation(mnemonic) {
                     println!("-----------------------------------");
                     println!(
-                        "[R] {} - shamt [{:x}] - funct [{:x}]",
-                        mnemonic, instr_info.shamt, instr_info.funct
+                        "[R] {} - shamt [{:x}] - funct [{:x}] - args [{:?}]",
+                        mnemonic, instr_info.shamt, instr_info.funct, args
                     );
                     match assemble_r(instr_info, args) {
                         Ok(assembled_r) => {
@@ -546,7 +573,10 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                     }
                 } else if let Ok(instr_info) = i_operation(mnemonic) {
                     println!("-----------------------------------");
-                    println!("[I] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
+                    println!(
+                        "[I] {} - opcode [{:x}] - args [{:?}]",
+                        mnemonic, instr_info.opcode, args
+                    );
 
                     match assemble_i(instr_info, args, &labels, current_addr) {
                         Ok(assembled_i) => {
@@ -558,7 +588,10 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                     }
                 } else if let Ok(instr_info) = j_operation(mnemonic) {
                     println!("-----------------------------------");
-                    println!("[J] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
+                    println!(
+                        "[J] {} - opcode [{:x}] - args [{:?}]",
+                        mnemonic, instr_info.opcode, args
+                    );
 
                     match assemble_j(instr_info, args, &labels) {
                         Ok(assembled_j) => {

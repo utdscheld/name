@@ -25,7 +25,7 @@ run-gnu: build
 
 test: run
 	$(CARGO) run -- $(GNUCFG) $(INPUT) gnu-$(OUTPUT)
-	md5sum $(OUTPUT) gnu-$(OUTPUT)
+	md5sum $(OUTPUT) .artifacts/mars_output.o gnu-$(OUTPUT)
 
 clean:
 	$(CARGO) clean
