@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["63321", "/home/qwe/Documents/CS4485/name/mips_test.asm", "/home/qwe/Documents/CS4485/name/name-as/output.o"],
+            "args": ["63321", "/home/qwe/Documents/CS4485/name/name-as/.artifacts/mips_test.asm", "/home/qwe/Documents/CS4485/name/name-as/output.o", "/home/qwe/Documents/CS4485/name/name-as/output.o.li"],
             "cwd": "${workspaceFolder}"
         },
         {

@@ -14,6 +14,9 @@ use mips::Mips;
 mod exception;
 use exception::{ExecutionErrors, exception_pretty_print, ExecutionEvents};
 
+mod lineinfo;
+use lineinfo::{LineInfo, lineinfo_import};
+
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
 use std::net::TcpListener;
@@ -51,8 +54,8 @@ fn main() -> DynResult<()> {
 
   let args_strings: Vec<String> = env::args().collect();
 
-  if args_strings.len() != 4 {
-      return Err("USAGE: name-emu [port number] [source file] [object file]".into());
+  if args_strings.len() != 5 {
+      return Err("USAGE: name-emu [port number] [source file] [object file] [line info file]".into());
   }
   let log_path = std::path::Path::join(env::temp_dir().as_path(), "name_log.txt");
   let mut file = File::create(log_path)?;
@@ -87,6 +90,16 @@ fn main() -> DynResult<()> {
       return Err(Box::new(MyAdapterError::ArgumentParsingError));      
     }
   };
+
+  let program_lineinfo = match std::fs::read_to_string(args_strings.get(4).unwrap()) {
+    Ok(program_lineinfo) => program_lineinfo,
+    Err(why) => {
+      println!("Failed to open provided line info file. Reason: {}", why);
+      return Err(Box::new(MyAdapterError::CommandArgumentError));      
+    }
+  };
+  let lineinfo = lineinfo_import(program_lineinfo)?;
+  writeln!(file, "Lineinfo read: {:?}", lineinfo)?;
 
 
   let mut server = Server::new(BufReader::new(in_port), BufWriter::new(out_port));
@@ -273,12 +286,10 @@ loop {
       );
       server.respond(rsp)?;
 
-      if let Err(event) = result {
-        if let ExecutionErrors::Event{event} = event {
-          if event == ExecutionEvents::ProgramComplete {
-            server.send_event(Event::Terminated(None))?;
-            server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
-          }
+      if let Err(ExecutionErrors::Event{event}) = result {
+        if event == ExecutionEvents::ProgramComplete {
+          server.send_event(Event::Terminated(None))?;
+          server.send_event(Event::Exited(ExitedEventBody{ exit_code: 0 }))?;
         }
       }
       else {
@@ -333,7 +344,7 @@ loop {
             id: 0,
             name: "mips".to_string(),
             source: Some(Source { name: Some(program_name.to_string()), path: None, source_reference: Some(0), presentation_hint: None, origin: None, sources: None, adapter_data: None, checksums: None }),
-            line: 1,
+            line: lineinfo[&(mips.pc as u32)].line_number as i64,
             column: 0,
             end_line: None,
             end_column: None,
