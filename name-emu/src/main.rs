@@ -14,8 +14,7 @@ use mips::Mips;
 mod exception;
 use exception::{ExecutionErrors, exception_pretty_print, ExecutionEvents};
 
-mod lineinfo;
-use lineinfo::{LineInfo, lineinfo_import};
+use name_const::lineinfo::{LineInfo, lineinfo_import};
 
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
