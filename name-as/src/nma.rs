@@ -1,6 +1,7 @@
 /// NAME Mips Assembler
 use crate::args::Args;
-use crate::lineinfo::*;
+//use crate::lineinfo::*;
+use name_const::lineinfo::*;
 use crate::parser::print_cst;
 use std::collections::HashMap;
 use std::fs;
@@ -573,7 +574,7 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                 }
             }
             MipsCST::Label(_) => {
-                line_number += 1;
+                //line_number += 1;
                 continue;
             }
             _ => continue,

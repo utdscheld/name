@@ -1,9 +1,9 @@
 extern crate pest;
 extern crate pest_derive;
+//use name_const::LineInfo;
 
 pub mod args;
 pub mod config;
-pub mod lineinfo;
 
 pub mod nma;
 pub mod parser;
