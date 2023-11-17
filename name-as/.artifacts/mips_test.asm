@@ -26,6 +26,7 @@ main: # Hello Test
    lb  $t0, 50($t1)
    lb  $t0, ($t1)
    beq $s0, $s0, test
+   bgtz $t0, test
    or $t0, $s5, $fp
    or $s3, $s5, $sp
    slt $t9, $zero, $zero

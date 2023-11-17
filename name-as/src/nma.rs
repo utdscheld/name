@@ -46,6 +46,14 @@ fn base_parse(input: &str) -> Result<u32, &'static str> {
     }
 }
 
+fn label_or_imm(input: &str, labels: &HashMap<&str, u32>) -> Result<u32, String> {
+    match (labels.get(input), base_parse(input)) {
+        (Some(v), _) => Ok(*v),
+        (_, Ok(n)) => Ok(n),
+        (None, Err(_)) => Err(format!("Bad pseudop argument {}", input)),
+    }
+}
+
 const TEXT_ADDRESS_BASE: u32 = 0x400000;
 const _DATA_ADDRESS_BASE: u32 = 0x10000000;
 const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
@@ -75,6 +83,7 @@ pub struct R {
 /// which arguments it expects in which order
 enum IForm {
     RtImm,
+    RsImm,
     RtImmRs,
     RtRsImm,
     RsRtLabel,
@@ -201,6 +210,10 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
         "bne" => Ok(I {
             opcode: 0x5,
             form: IForm::RsRtLabel,
+        }),
+        "bgtz" => Ok(I {
+            opcode: 0x7,
+            form: IForm::RsImm,
         }),
         "slti" => Ok(I {
             opcode: 0xa,
@@ -409,10 +422,15 @@ fn assemble_i(
             enforce_length(&i_args, 2)?;
             rs = 0;
             rt = assemble_reg(i_args[0])?;
-            imm = match base_parse(i_args[1]) {
-                Ok(v) => v as u16,
-                Err(_) => return Err(format!("Failed to parse immediate {}", i_args[1])),
-            }
+            imm = label_or_imm(i_args[1], labels)? as u16;
+        }
+        IForm::RsImm => {
+            enforce_length(&i_args, 2)?;
+            rs = assemble_reg(i_args[0])?;
+            rt = 0;
+            // Subtract byte width due to branch delay
+            imm = (((label_or_imm(i_args[1], labels)?) - instr_address - 1) / MIPS_INSTR_BYTE_WIDTH)
+                as u16;
         }
         IForm::RtImmRs => {
             // Immediate can default to 0 if not included in instructions
@@ -556,11 +574,7 @@ pub fn expand_pseudo<'a>(
             };
             enforce_length(&args_catch, 3)?;
             let offset = base_parse(args_catch[1])?;
-            let base = match (labels.get(args_catch[2]), base_parse(args_catch[2])) {
-                (Some(v), _) => *v,
-                (_, Ok(n)) => n,
-                (None, Err(_)) => return Err(format!("Bad pseudop argument {}", args_catch[2])),
-            };
+            let base = label_or_imm(args_catch[2], labels)?;
             let address = offset + base;
 
             println!("{:x} {:x} {:x}", offset, base, address);
