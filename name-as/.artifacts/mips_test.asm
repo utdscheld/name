@@ -4,7 +4,7 @@
 .include "SysCalls.asm"
 
 .eqv FIFTY 50
-.macro test (%a, %b, %c)
+.macro mtest (%a, %b, %c)
    add %a, %b, %c
    sub %c, %b, %a
    lb %a, FIFTY(%c)
@@ -16,7 +16,7 @@ main: # Hello Test
    sll $s0, $s0, 5
    srl $s5, $s7, 10
    xor $t7, $t8, $t9
-   test ($t0, $t1, $t2)
+   mtest ($t0, $t1, $t2)
    lui $t0, FIFTY
    ori $t0, $t1, FIFTY
    ori $t0, $t0, 0x50
@@ -32,6 +32,7 @@ main: # Hello Test
    jr $ra
    slti $t6, $zero, 0x789
    addi $ra, $ra, 8
+   la $a0, main
 test:
    j   main
    jal test

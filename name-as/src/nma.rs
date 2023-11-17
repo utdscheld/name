@@ -1,5 +1,5 @@
 /// NAME Mips Assembler
-use crate::args::Args;
+use crate::args::{self, Args};
 use crate::config::Config;
 use crate::lineinfo::*;
 use regex::Regex;
@@ -251,6 +251,7 @@ pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
 /// Converts a numbered mnemonic ($t0, $s8, etc) or literal (55, 67, etc) to its integer representation
 fn reg_number(mnemonic: &str) -> Result<u8, &'static str> {
     if mnemonic.len() != 3 {
+        println!("{}", mnemonic);
         return Err("Mnemonic out of bounds");
     }
 
@@ -489,7 +490,12 @@ fn assemble_i(
 }
 
 /// Assembles a J-type instruction
-fn assemble_j(j_struct: J, j_args: Vec<&str>, labels: &HashMap<&str, u32>) -> Result<u32, String> {
+fn assemble_j(
+    j_struct: J,
+    j_args: Vec<&str>,
+    labels: &HashMap<&str, u32>,
+    instr_address: u32,
+) -> Result<u32, String> {
     enforce_length(&j_args, 1)?;
 
     let jump_address: u32 = labels[j_args[0]];
@@ -529,6 +535,54 @@ fn assemble_j(j_struct: J, j_args: Vec<&str>, labels: &HashMap<&str, u32>) -> Re
         width = 32
     );
     Ok(result)
+}
+
+/// Converts a pseudop into its real counterparts
+pub fn expand_pseudo<'a>(
+    mnemonic: &'a String,
+    pseudo_args: Vec<&'a str>,
+    labels: &HashMap<&str, u32>,
+    instr_address: u32,
+) -> Result<Vec<(&'a str, Vec<String>)>, String> {
+    match mnemonic.clone().as_str() {
+        "la" => {
+            let args_catch = if pseudo_args.len() == 2 {
+                let mut c = pseudo_args.clone();
+                c.insert(1, "0");
+                c
+            } else {
+                pseudo_args.clone()
+            };
+            enforce_length(&args_catch, 3)?;
+            let offset = base_parse(args_catch[1])?;
+            let base = match labels.get(args_catch[2]) {
+                // Subtract byte width due to branch delay
+                Some(v) => *v,
+                None => return Err(format!("Undeclared label {}", args_catch[2])),
+            };
+            let address = offset + base;
+
+            println!("{:x} {:x} {:x}", offset, base, address);
+            let (upper, lower) = ((address & 0xFFFF0000) >> 16, address & 0xFFFF);
+            println!("{:x} {:x}", upper, lower);
+
+            Ok(vec![
+                ("lui", vec!["$at".to_string(), upper.to_string()]),
+                (
+                    "ori",
+                    vec![
+                        args_catch[0].to_string(),
+                        "$at".to_string(),
+                        lower.to_string(),
+                    ],
+                ),
+            ])
+        }
+        _ => Ok(vec![(
+            mnemonic.as_str(),
+            pseudo_args.iter().map(|x| x.to_string()).collect(),
+        )]),
+    }
 }
 
 use crate::parser::*;
@@ -690,80 +744,97 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
         match sub_cst {
             MipsCST::Label(label_str) => {
                 println!(
-                    "Inserting label {} at {:x}",
+                    "Inserting label {} at 0x{:x}",
                     label_str, text_section_address
                 );
                 labels.insert(label_str, text_section_address);
                 continue;
             }
-            MipsCST::Directive(_, _) => continue,
             MipsCST::Sequence(_) => unreachable!(),
+            MipsCST::Directive(_, _) => continue,
             _ => (),
         };
 
         text_section_address += MIPS_INSTR_BYTE_WIDTH
     }
 
+    // This sucks, pseudo parsing needs to be in preprocessing
     text_section_address = TEXT_ADDRESS_BASE;
 
     // Assemble instructions
     for sub_cst in vernac_sequence {
         match sub_cst {
-            MipsCST::Instruction(mnemonic, args) => {
+            MipsCST::Instruction(root_mnemonic, root_args) => {
+                let rm = root_mnemonic.to_string();
+                let to_assemble =
+                    expand_pseudo(&rm, root_args.clone(), &labels, text_section_address)?;
+
+                for key in labels.clone().keys() {
+                    if labels[key] > text_section_address {
+                        *labels.get_mut(key).unwrap() +=
+                            (to_assemble.len() as u32 - 1) * MIPS_INSTR_BYTE_WIDTH;
+                    }
+                }
+
                 // Update line info
                 lineinfo.push(LineInfo {
                     instr_addr: text_section_address,
                     line_number: 0,
-                    line_contents: instr_to_str(mnemonic, &args),
+                    line_contents: instr_to_str(root_mnemonic, &root_args),
                     psuedo_op: "".to_string(),
                 });
 
-                if let Ok(instr_info) = r_operation(mnemonic) {
-                    println!("-----------------------------------");
-                    println!(
-                        "[R] {} - shamt [{:x}] - funct [{:x}] - args {:?}",
-                        mnemonic, instr_info.shamt, instr_info.funct, args
-                    );
-                    match assemble_r(instr_info, args) {
-                        Ok(assembled_r) => {
-                            if write_u32(&output_file, assembled_r).is_err() {
-                                return Err("Failed to write to output binary".to_string());
+                for (mnemonic, args) in to_assemble.iter() {
+                    let args = args.iter().map(|x| x.as_str()).collect();
+                    if let Ok(instr_info) = r_operation(mnemonic) {
+                        println!("-----------------------------------");
+                        println!(
+                            "[R] {} - shamt [{:x}] - funct [{:x}] - args {:?}",
+                            mnemonic, instr_info.shamt, instr_info.funct, args
+                        );
+                        match assemble_r(instr_info, args) {
+                            Ok(assembled_r) => {
+                                if write_u32(&output_file, assembled_r).is_err() {
+                                    return Err("Failed to write to output binary".to_string());
+                                }
                             }
+                            Err(e) => return Err(e.to_string()),
                         }
-                        Err(e) => return Err(e.to_string()),
-                    }
-                } else if let Ok(instr_info) = i_operation(mnemonic) {
-                    println!("-----------------------------------");
-                    println!(
-                        "[I] {} - opcode [{:x}] - args {:?}",
-                        mnemonic, instr_info.opcode, args
-                    );
+                    } else if let Ok(instr_info) = i_operation(mnemonic) {
+                        println!("-----------------------------------");
+                        println!(
+                            "[I] {} - opcode [{:x}] - args {:?}",
+                            mnemonic, instr_info.opcode, args
+                        );
 
-                    match assemble_i(instr_info, args, &labels, text_section_address) {
-                        Ok(assembled_i) => {
-                            if write_u32(&output_file, assembled_i).is_err() {
-                                return Err("Failed to write to output binary".to_string());
+                        match assemble_i(instr_info, args, &labels, text_section_address) {
+                            Ok(assembled_i) => {
+                                if write_u32(&output_file, assembled_i).is_err() {
+                                    return Err("Failed to write to output binary".to_string());
+                                }
                             }
+                            Err(e) => return Err(e.to_string()),
                         }
-                        Err(e) => return Err(e.to_string()),
-                    }
-                } else if let Ok(instr_info) = j_operation(mnemonic) {
-                    println!("-----------------------------------");
-                    println!(
-                        "[J] {} - opcode [{:x}] - args {:?}",
-                        mnemonic, instr_info.opcode, args
-                    );
+                    } else if let Ok(instr_info) = j_operation(mnemonic) {
+                        println!("-----------------------------------");
+                        println!(
+                            "[J] {} - opcode [{:x}] - args {:?}",
+                            mnemonic, instr_info.opcode, args
+                        );
 
-                    match assemble_j(instr_info, args, &labels) {
-                        Ok(assembled_j) => {
-                            if write_u32(&output_file, assembled_j).is_err() {
-                                return Err("Failed to write to output binary".to_string());
+                        match assemble_j(instr_info, args, &labels, text_section_address) {
+                            Ok(assembled_j) => {
+                                if write_u32(&output_file, assembled_j).is_err() {
+                                    return Err("Failed to write to output binary".to_string());
+                                }
                             }
+                            Err(e) => return Err(e.to_string()),
                         }
-                        Err(e) => return Err(e.to_string()),
+                    } else {
+                        return Err("Failed to match instruction".to_string());
                     }
-                } else {
-                    return Err("Failed to match instruction".to_string());
+
+                    text_section_address += MIPS_INSTR_BYTE_WIDTH;
                 }
             }
             MipsCST::Directive(mnemonic, _args) => match mnemonic {
@@ -774,8 +845,6 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
             },
             _ => continue,
         };
-
-        text_section_address += MIPS_INSTR_BYTE_WIDTH;
     }
 
     if program_arguments.line_info {
