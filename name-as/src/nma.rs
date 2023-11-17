@@ -438,7 +438,7 @@ fn assemble_i(
             rt = assemble_reg(i_args[1])?;
             match labels.get(i_args[2]) {
                 // Subtract byte width due to branch delay
-                Some(v) => imm = (((*v) - instr_address) / MIPS_INSTR_BYTE_WIDTH) as u16,
+                Some(v) => imm = (((*v) - instr_address - 1) / MIPS_INSTR_BYTE_WIDTH) as u16,
                 None => return Err(format!("Undeclared label {}", i_args[2])),
             }
         }
@@ -490,12 +490,7 @@ fn assemble_i(
 }
 
 /// Assembles a J-type instruction
-fn assemble_j(
-    j_struct: J,
-    j_args: Vec<&str>,
-    labels: &HashMap<&str, u32>,
-    instr_address: u32,
-) -> Result<u32, String> {
+fn assemble_j(j_struct: J, j_args: Vec<&str>, labels: &HashMap<&str, u32>) -> Result<u32, String> {
     enforce_length(&j_args, 1)?;
 
     let jump_address: u32 = labels[j_args[0]];
@@ -537,15 +532,21 @@ fn assemble_j(
     Ok(result)
 }
 
+pub fn get_pseudo_length(mnemonic: String) -> Result<u32, String> {
+    match mnemonic.clone().as_str() {
+        "la" | "li" => Ok(2),
+        _ => Err(format!("{} is not a pseudo-instruction", mnemonic)),
+    }
+}
+
 /// Converts a pseudop into its real counterparts
 pub fn expand_pseudo<'a>(
     mnemonic: &'a String,
     pseudo_args: Vec<&'a str>,
     labels: &HashMap<&str, u32>,
-    instr_address: u32,
 ) -> Result<Vec<(&'a str, Vec<String>)>, String> {
-    match mnemonic.clone().as_str() {
-        "la" => {
+    let result = match mnemonic.clone().as_str() {
+        "la" | "li" => {
             let args_catch = if pseudo_args.len() == 2 {
                 let mut c = pseudo_args.clone();
                 c.insert(1, "0");
@@ -555,10 +556,10 @@ pub fn expand_pseudo<'a>(
             };
             enforce_length(&args_catch, 3)?;
             let offset = base_parse(args_catch[1])?;
-            let base = match labels.get(args_catch[2]) {
-                // Subtract byte width due to branch delay
-                Some(v) => *v,
-                None => return Err(format!("Undeclared label {}", args_catch[2])),
+            let base = match (labels.get(args_catch[2]), base_parse(args_catch[2])) {
+                (Some(v), _) => *v,
+                (_, Ok(n)) => n,
+                (None, Err(_)) => return Err(format!("Bad pseudop argument {}", args_catch[2])),
             };
             let address = offset + base;
 
@@ -582,7 +583,19 @@ pub fn expand_pseudo<'a>(
             mnemonic.as_str(),
             pseudo_args.iter().map(|x| x.to_string()).collect(),
         )]),
+    };
+
+    if let Ok(v) = &result {
+        if v.len() as u32 != get_pseudo_length(mnemonic.to_string()).unwrap_or(v.len() as u32) {
+            return Err(format!(
+                "Generated pseudo length for {} doesn't match expected length of {}",
+                mnemonic,
+                get_pseudo_length(mnemonic.to_string())?
+            ));
+        };
     }
+
+    result
 }
 
 use crate::parser::*;
@@ -741,7 +754,9 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
     // Assign addresses to labels
     let mut labels: HashMap<&str, u32> = HashMap::new();
     for sub_cst in &vernac_sequence {
-        match sub_cst {
+        // The instruction width of the currently-parsed instruction
+        // Should be 1 if not a pseudo
+        let unwrapped_pseudo_length = match sub_cst {
             MipsCST::Label(label_str) => {
                 println!(
                     "Inserting label {} at 0x{:x}",
@@ -752,13 +767,14 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
             }
             MipsCST::Sequence(_) => unreachable!(),
             MipsCST::Directive(_, _) => continue,
-            _ => (),
+            MipsCST::Instruction(mnemonic, _) => {
+                get_pseudo_length(mnemonic.to_string()).unwrap_or(1)
+            }
         };
 
-        text_section_address += MIPS_INSTR_BYTE_WIDTH
+        text_section_address += MIPS_INSTR_BYTE_WIDTH * unwrapped_pseudo_length;
     }
 
-    // This sucks, pseudo parsing needs to be in preprocessing
     text_section_address = TEXT_ADDRESS_BASE;
 
     // Assemble instructions
@@ -766,15 +782,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
         match sub_cst {
             MipsCST::Instruction(root_mnemonic, root_args) => {
                 let rm = root_mnemonic.to_string();
-                let to_assemble =
-                    expand_pseudo(&rm, root_args.clone(), &labels, text_section_address)?;
-
-                for key in labels.clone().keys() {
-                    if labels[key] > text_section_address {
-                        *labels.get_mut(key).unwrap() +=
-                            (to_assemble.len() as u32 - 1) * MIPS_INSTR_BYTE_WIDTH;
-                    }
-                }
+                let to_assemble = expand_pseudo(&rm, root_args.clone(), &labels)?;
 
                 // Update line info
                 lineinfo.push(LineInfo {
@@ -822,7 +830,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
                             mnemonic, instr_info.opcode, args
                         );
 
-                        match assemble_j(instr_info, args, &labels, text_section_address) {
+                        match assemble_j(instr_info, args, &labels) {
                             Ok(assembled_j) => {
                                 if write_u32(&output_file, assembled_j).is_err() {
                                     return Err("Failed to write to output binary".to_string());

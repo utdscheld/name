@@ -33,6 +33,7 @@ main: # Hello Test
    slti $t6, $zero, 0x789
    addi $ra, $ra, 8
    la $a0, main
+   li $a2, 0x123456
 test:
    j   main
    jal test
