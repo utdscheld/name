@@ -70,6 +70,7 @@ enum RForm {
     RdRsRt,
     RdRtShamt,
     Rs,
+    Blank,
 }
 
 /// The variable components of an R-type instruction
@@ -147,6 +148,16 @@ pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
             shamt: 0,
             funct: 0x08,
             form: RForm::Rs,
+        }),
+        "syscall" => Ok(R {
+            shamt: 0,
+            funct: 0xc,
+            form: RForm::Blank,
+        }),
+        "nop" => Ok(R {
+            shamt: 0,
+            funct: 0,
+            form: RForm::Blank,
         }),
         _ => Err("Failed to match R-instr mnemonic"),
     }
@@ -362,6 +373,12 @@ fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, String> {
             rs = assemble_reg(r_args[0])?;
             rt = 0;
             shamt = r_struct.shamt;
+        }
+        RForm::Blank => {
+            rd = 0;
+            rs = 0;
+            rt = 0;
+            shamt = 0;
         }
     };
 
@@ -741,7 +758,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
     } else {
         file_contents
     };
-    println!("{}", file_contents);
+    // println!("{}", file_contents);
 
     // Parse into CST
     let cst = parse_rule(
@@ -772,6 +789,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
         // Should be 1 if not a pseudo
         let unwrapped_pseudo_length = match sub_cst {
             MipsCST::Label(label_str) => {
+                println!("Label: {}", label_str);
                 println!(
                     "Inserting label {} at 0x{:x}",
                     label_str, text_section_address
@@ -782,6 +800,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
             MipsCST::Sequence(_) => unreachable!(),
             MipsCST::Directive(_, _) => continue,
             MipsCST::Instruction(mnemonic, _) => {
+                println!("Instruction: {}", mnemonic);
                 get_pseudo_length(mnemonic.to_string()).unwrap_or(1)
             }
         };
@@ -853,7 +872,7 @@ pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), 
                             Err(e) => return Err(e.to_string()),
                         }
                     } else {
-                        return Err("Failed to match instruction".to_string());
+                        return Err(format!("Failed to match instruction {}", mnemonic));
                     }
 
                     text_section_address += MIPS_INSTR_BYTE_WIDTH;

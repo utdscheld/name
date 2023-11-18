@@ -22,6 +22,7 @@ main: # Hello Test
    ori $t0, $t0, 0x50
    ori $t0, $t0, 050
    ori $t0, $t0, 0b1010
+   nop
    lb  $t0, 0x50($t1)
    lb  $t0, 50($t1)
    lb  $t0, ($t1)
@@ -35,6 +36,7 @@ main: # Hello Test
    addi $ra, $ra, 8
    la $a0, main
    li $a2, 0x123456
+   syscall
 test:
    j   main
    jal test

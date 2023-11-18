@@ -26,6 +26,9 @@ standard_args = _{
 }
 mem_access_args = _{ instruction_arg ~ "," ~ integer? ~ "(" ~ instruction_arg ~ ")" }
 instruction_args = _{ mem_access_args | standard_args }
+syscall = { "syscall" }
+nop = { "nop" }
+noarg_instr = _{ syscall | nop }
 instruction = { ident ~ instruction_args }
 
 no_arg_directives = @{
@@ -74,7 +77,7 @@ directive = {
     ))
 }
 
-vernacular = { SOI ~ ((directive | instruction | label ))* }
+vernacular = { SOI ~ (label | directive | noarg_instr | instruction )* }
 "##]
 pub struct MipsParser;
 
@@ -101,6 +104,8 @@ pub fn parse_rule(pair: Pair<Rule>) -> MipsCST {
             let args = inner.clone().map(|p| p.as_str()).collect::<Vec<&str>>();
             MipsCST::Directive(directive, args)
         }
+        Rule::syscall => MipsCST::Instruction("syscall", vec![]),
+        Rule::nop => MipsCST::Instruction("nop", vec![]),
         Rule::vernacular => MipsCST::Sequence(pair.into_inner().map(parse_rule).collect()),
         _ => {
             println!("Unreachable: {:?}", pair.as_rule());
