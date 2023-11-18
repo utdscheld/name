@@ -1,5 +1,5 @@
 /// NAME Mips Assembler
-use crate::args::{self, Args};
+use crate::args::Args;
 use crate::config::Config;
 use crate::lineinfo::*;
 use regex::Regex;
