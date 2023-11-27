@@ -52,7 +52,15 @@ pub const IMMEDIATE_PRETTY_PRINT: usize = 32;
 enum BranchDelays {
     NotActive,
     Set,
-    Ready
+    SetAbsolute,
+    Ready,
+    ReadyAbsolute
+}
+
+// https://www.reddit.com/r/rust/comments/6175al/arbitrary_width_sign_extension_in_rust/
+fn sign_extend(x: i32, nbits: u32) -> i32 {
+	let notherbits = std::mem::size_of_val(&x) as u32 * 8 - nbits;
+  	x.wrapping_shl(notherbits).wrapping_shr(notherbits)
 }
 
 #[derive(Debug)]
@@ -65,7 +73,8 @@ pub(crate) struct Mips {
 
     // Branch delay slots are implemented by filling this buffer with the
     // branch target, which will be triggered after the following instruction
-    branch_delay_target: u32,
+    branch_delay_target: i32,
+    branch_delay_target_abs: u32,
     branch_delay_status: BranchDelays,
     
 
@@ -94,6 +103,7 @@ impl Default for Mips {
             mult_lo: 0,
             pc: 0,
             branch_delay_target: 0,
+            branch_delay_target_abs: 0,
             branch_delay_status: BranchDelays::NotActive,
             memories: vec![],
             stop_address: 0,
@@ -152,6 +162,12 @@ impl Mips {
             // Jump Register
             0x8 => {
                 self.pc = self.regs[ins.rs] as usize;
+            }
+            // System Call
+            0xC => {
+                // Grab 20-bit code field
+                let code = (opcode >> 6) & 0xFFFFF;
+                syscall(self, code)?;
             }
             // Add
             0x20 => {
@@ -216,7 +232,9 @@ impl Mips {
             // MIPS manual says: If the contents of GPR rs are less than zero (sign bit is 1)
             0x6 => {
                 if self.regs[ins.rs] as i32 <= 0 {
-                    self.branch_delay_target = (ins.imm as u32) << 2;
+                    // Ugh. How do I handle this?
+                    // This is an 18-bit signed integer. How do I even make that in Rust
+                    self.branch_delay_target = sign_extend(ins.imm as u32 as i32, 18);
                     self.branch_delay_status = BranchDelays::Set;
                 }
             }
@@ -225,13 +243,13 @@ impl Mips {
             // are greater than zero (sign bit is 0 but value not zero)
             0x7 => {
                 if self.regs[ins.rs] > 0 {
-                    self.branch_delay_target = (ins.imm as u32) << 2;
+                    self.branch_delay_target = sign_extend(((ins.imm as u32) << 2) as i32, 18);
                     self.branch_delay_status = BranchDelays::Set;
                 }
             }
             // Add Immediate
             0x8 => {
-                let result = self.regs[ins.rs].checked_add(ins.imm as u32);
+                let result = self.regs[ins.rs].checked_add_signed(ins.imm as i16 as i32);
                 match result {
                     Some(value) => {self.regs[ins.rt] = value;}
                     None => {
@@ -259,12 +277,6 @@ impl Mips {
             // casting is to sign extend again
             0xB => { 
                 self.regs[ins.rt] = if self.regs[ins.rs] < (ins.imm as i16 as i32 as u32) { 1 } else { 0 };
-            }
-            // System Call
-            0xC => {
-                // Grab 20-bit code field
-                let code = (opcode >> 6) & 0xFFFFF;
-                syscall(self, code)?;
             }
             // Or Immediate
             0xD => {
@@ -319,14 +331,14 @@ impl Mips {
             // Branch if Equal
             0x4 => {
                 if self.regs[ins.rt] == self.regs[ins.rs] {
-                    self.branch_delay_target = (ins.imm as u32) << 2;
+                    self.branch_delay_target = sign_extend(ins.imm as u32 as i32, 18);
                     self.branch_delay_status = BranchDelays::Set;
                 }
             }
             // Branch if Not Equal
             0x5 => {
                 if self.regs[ins.rt] != self.regs[ins.rs] {
-                    self.branch_delay_target = (ins.imm as u32) << 2;
+                    self.branch_delay_target = sign_extend(ins.imm as u32 as i32, 18);
                     self.branch_delay_status = BranchDelays::Set;
                 }
             }
@@ -343,13 +355,13 @@ impl Mips {
         match ins.opcode {
             // Jump absolute
             2 => {
-                self.branch_delay_status = BranchDelays::Set;
-                self.branch_delay_target = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+                self.branch_delay_status = BranchDelays::SetAbsolute;
+                self.branch_delay_target_abs = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
             }
             // Jump And Link
             3 => {
-                self.branch_delay_status = BranchDelays::Set;
-                self.branch_delay_target = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+                self.branch_delay_status = BranchDelays::SetAbsolute;
+                self.branch_delay_target_abs = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
                 // $ra = register 31
                 self.regs[31] = self.pc as u32 + 8;
             }
@@ -522,8 +534,18 @@ impl Mips {
         match self.branch_delay_status {
             BranchDelays::NotActive => (),
             BranchDelays::Set => self.branch_delay_status = BranchDelays::Ready,
+            BranchDelays::SetAbsolute => self.branch_delay_status = BranchDelays::ReadyAbsolute,
             BranchDelays::Ready => {
-                self.pc = self.branch_delay_target as usize;
+                // https://stackoverflow.com/questions/54035728/how-to-add-a-negative-i32-number-to-an-usize-variable
+                if self.branch_delay_target.is_negative() {
+                    self.pc = self.pc.wrapping_sub(self.branch_delay_target.wrapping_abs() as u32 as usize);
+                } else {
+                    self.pc = self.pc.wrapping_add(self.branch_delay_target as usize);
+                }
+                self.branch_delay_status = BranchDelays::NotActive;
+            }
+            BranchDelays::ReadyAbsolute => {
+                self.pc = self.branch_delay_target_abs as usize;
                 self.branch_delay_status = BranchDelays::NotActive;
             }
         }
