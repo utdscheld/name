@@ -1,11 +1,13 @@
 /// NAME Mips Assembler
 use crate::args::Args;
+use crate::config::Config;
 use crate::lineinfo::*;
-use crate::parser::print_cst;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 use std::str;
 
 fn mask_u8(n: u8, x: u8) -> Result<u8, &'static str> {
@@ -26,14 +28,49 @@ fn mask_u32(n: u32, x: u8) -> Result<u32, &'static str> {
     }
 }
 
+fn base_parse(input: &str) -> Result<u32, &'static str> {
+    if let Some(literal) = input.strip_prefix("0x") {
+        // Hexadecimal
+        u32::from_str_radix(literal, 16).map_err(|_| "Failed to parse as hexadecimal")
+    } else if let Some(literal) = input.strip_prefix("0b") {
+        // Binary
+        u32::from_str_radix(literal, 2).map_err(|_| "Failed to parse as binary")
+    } else if input.starts_with('0') && input.len() > 1 {
+        // Octal
+        u32::from_str_radix(&input[1..], 8).map_err(|_| "Failed to parse as octal")
+    } else {
+        // Decimal
+        input
+            .parse::<u32>()
+            .map_err(|_| "Failed to parse as decimal")
+    }
+}
+
+fn label_or_imm(input: &str, labels: &HashMap<&str, u32>) -> Result<u32, String> {
+    match (labels.get(input), base_parse(input)) {
+        (Some(v), _) => Ok(*v),
+        (_, Ok(n)) => Ok(n),
+        (None, Err(_)) => Err(format!("Bad pseudop argument {}", input)),
+    }
+}
+
 const TEXT_ADDRESS_BASE: u32 = 0x400000;
+const _DATA_ADDRESS_BASE: u32 = 0x10000000;
 const MIPS_INSTR_BYTE_WIDTH: u32 = 4;
+
+// Controls whether data is being assembled into .text, .data, etc
+enum AssemblyMode {
+    TextMode,
+    DataMode,
+}
 
 /// The form of an R-type instruction, specificially
 /// which arguments it expects in which order
 enum RForm {
     RdRsRt,
     RdRtShamt,
+    Rs,
+    Blank,
 }
 
 /// The variable components of an R-type instruction
@@ -47,6 +84,7 @@ pub struct R {
 /// which arguments it expects in which order
 enum IForm {
     RtImm,
+    RsImm,
     RtImmRs,
     RtRsImm,
     RsRtLabel,
@@ -86,10 +124,40 @@ pub fn r_operation(mnemonic: &str) -> Result<R, &'static str> {
             funct: 0x02,
             form: RForm::RdRtShamt,
         }),
+        "or" => Ok(R {
+            shamt: 0,
+            funct: 0x25,
+            form: RForm::RdRsRt,
+        }),
+        "nor" => Ok(R {
+            shamt: 0,
+            funct: 0x27,
+            form: RForm::RdRsRt,
+        }),
         "xor" => Ok(R {
             shamt: 0,
             funct: 0x26,
             form: RForm::RdRsRt,
+        }),
+        "slt" => Ok(R {
+            shamt: 0,
+            funct: 0x2a,
+            form: RForm::RdRsRt,
+        }),
+        "jr" => Ok(R {
+            shamt: 0,
+            funct: 0x08,
+            form: RForm::Rs,
+        }),
+        "syscall" => Ok(R {
+            shamt: 0,
+            funct: 0xc,
+            form: RForm::Blank,
+        }),
+        "nop" => Ok(R {
+            shamt: 0,
+            funct: 0,
+            form: RForm::Blank,
         }),
         _ => Err("Failed to match R-instr mnemonic"),
     }
@@ -154,6 +222,18 @@ pub fn i_operation(mnemonic: &str) -> Result<I, &'static str> {
             opcode: 0x5,
             form: IForm::RsRtLabel,
         }),
+        "bgtz" => Ok(I {
+            opcode: 0x7,
+            form: IForm::RsImm,
+        }),
+        "slti" => Ok(I {
+            opcode: 0xa,
+            form: IForm::RtRsImm,
+        }),
+        "addi" => Ok(I {
+            opcode: 0x8,
+            form: IForm::RtRsImm,
+        }),
         _ => Err("Failed to match I-instr mnemonic"),
     }
 }
@@ -195,6 +275,7 @@ pub fn write_u32(mut file: &File, data: u32) -> std::io::Result<()> {
 /// Converts a numbered mnemonic ($t0, $s8, etc) or literal (55, 67, etc) to its integer representation
 fn reg_number(mnemonic: &str) -> Result<u8, &'static str> {
     if mnemonic.len() != 3 {
+        println!("{}", mnemonic);
         return Err("Mnemonic out of bounds");
     }
 
@@ -253,16 +334,16 @@ fn assemble_reg(mnemonic: &str) -> Result<u8, &'static str> {
 }
 
 /// Enforce a specific length for a given vector
-fn enforce_length(arr: &Vec<&str>, len: usize) -> Result<u32, &'static str> {
+fn enforce_length(arr: &Vec<&str>, len: usize) -> Result<u32, String> {
     if arr.len() != len {
-        Err("Failed length enforcement")
+        Err(format!("Expected {} arguments but got {}", len, arr.len()))
     } else {
         Ok(0)
     }
 }
 
 /// Assembles an R-type instruction
-fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
+fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, String> {
     let mut rs: u8;
     let mut rt: u8;
     let mut rd: u8;
@@ -281,10 +362,23 @@ fn assemble_r(r_struct: R, r_args: Vec<&str>) -> Result<u32, &'static str> {
             rd = assemble_reg(r_args[0])?;
             rs = 0;
             rt = assemble_reg(r_args[1])?;
-            shamt = match r_args[2].parse::<u8>() {
-                Ok(v) => v,
-                Err(_) => return Err("Failed to parse shamt"),
+            shamt = match base_parse(r_args[2]) {
+                Ok(v) => v as u8,
+                Err(_) => return Err("Failed to parse shamt".to_string()),
             }
+        }
+        RForm::Rs => {
+            enforce_length(&r_args, 1)?;
+            rd = 0;
+            rs = assemble_reg(r_args[0])?;
+            rt = 0;
+            shamt = r_struct.shamt;
+        }
+        RForm::Blank => {
+            rd = 0;
+            rs = 0;
+            rt = 0;
+            shamt = 0;
         }
     };
 
@@ -335,7 +429,7 @@ fn assemble_i(
     i_args: Vec<&str>,
     labels: &HashMap<&str, u32>,
     instr_address: u32,
-) -> Result<u32, &'static str> {
+) -> Result<u32, String> {
     let mut rs: u8;
     let mut rt: u8;
     let imm: u16;
@@ -345,19 +439,33 @@ fn assemble_i(
             enforce_length(&i_args, 2)?;
             rs = 0;
             rt = assemble_reg(i_args[0])?;
-            imm = match i_args[1].parse::<u16>() {
-                Ok(v) => v,
-                Err(_) => return Err("Failed to parse imm"),
-            }
+            imm = label_or_imm(i_args[1], labels)? as u16;
+        }
+        IForm::RsImm => {
+            enforce_length(&i_args, 2)?;
+            rs = assemble_reg(i_args[0])?;
+            rt = 0;
+            // Subtract byte width due to branch delay
+            imm = (((label_or_imm(i_args[1], labels)?) - instr_address - 1) / MIPS_INSTR_BYTE_WIDTH)
+                as u16;
         }
         IForm::RtImmRs => {
-            enforce_length(&i_args, 3)?;
-            rt = assemble_reg(i_args[0])?;
-            imm = match i_args[1].parse::<u16>() {
-                Ok(v) => v,
-                Err(_) => return Err("Failed to parse imm"),
+            // Immediate can default to 0 if not included in instructions
+            // such as 'ld $t0, ($t1)'
+            let i_args_catch = if i_args.len() == 2 {
+                let mut c = i_args.clone();
+                c.insert(1, "0");
+                c
+            } else {
+                i_args.clone()
             };
-            rs = assemble_reg(i_args[2])?;
+            enforce_length(&i_args_catch, 3)?;
+            rt = assemble_reg(i_args_catch[0])?;
+            imm = match base_parse(i_args_catch[1]) {
+                Ok(v) => v as u16,
+                Err(_) => return Err(format!("Failed to parse immediate {}", i_args[1])),
+            };
+            rs = assemble_reg(i_args_catch[2])?;
         }
         IForm::RsRtLabel => {
             enforce_length(&i_args, 3)?;
@@ -365,17 +473,17 @@ fn assemble_i(
             rt = assemble_reg(i_args[1])?;
             match labels.get(i_args[2]) {
                 // Subtract byte width due to branch delay
-                Some(v) => imm = ((*v) - instr_address - MIPS_INSTR_BYTE_WIDTH) as u16,
-                None => return Err("Undeclared label"),
+                Some(v) => imm = (((*v) - instr_address - 1) / MIPS_INSTR_BYTE_WIDTH) as u16,
+                None => return Err(format!("Undeclared label {}", i_args[2])),
             }
         }
         IForm::RtRsImm => {
             enforce_length(&i_args, 3)?;
             rt = assemble_reg(i_args[0])?;
             rs = assemble_reg(i_args[1])?;
-            imm = match i_args[2].parse::<u16>() {
-                Ok(v) => v,
-                Err(_) => return Err("Failed to parse imm"),
+            imm = match base_parse(i_args[2]) {
+                Ok(v) => v as u16,
+                Err(_) => return Err(format!("Failed to parse immediate {}", i_args[2])),
             };
         }
     };
@@ -417,11 +525,7 @@ fn assemble_i(
 }
 
 /// Assembles a J-type instruction
-fn assemble_j(
-    j_struct: J,
-    j_args: Vec<&str>,
-    labels: &HashMap<&str, u32>,
-) -> Result<u32, &'static str> {
+fn assemble_j(j_struct: J, j_args: Vec<&str>, labels: &HashMap<&str, u32>) -> Result<u32, String> {
     enforce_length(&j_args, 1)?;
 
     let jump_address: u32 = labels[j_args[0]];
@@ -430,7 +534,10 @@ fn assemble_j(
     let mut masked_jump_address = mask_u32(jump_address, 28)?;
     println!("Jump address masked: {}", masked_jump_address);
     if jump_address != masked_jump_address {
-        return Err("Tried to assemble illegal jump address");
+        return Err(format!(
+            "Tried to assemble illegal jump address {}",
+            jump_address
+        ));
     }
 
     // Byte-align jump address
@@ -460,11 +567,173 @@ fn assemble_j(
     Ok(result)
 }
 
+pub fn get_pseudo_length(mnemonic: String) -> Result<u32, String> {
+    match mnemonic.clone().as_str() {
+        "la" | "li" => Ok(2),
+        _ => Err(format!("{} is not a pseudo-instruction", mnemonic)),
+    }
+}
+
+/// Converts a pseudop into its real counterparts
+pub fn expand_pseudo<'a>(
+    mnemonic: &'a String,
+    pseudo_args: Vec<&'a str>,
+    labels: &HashMap<&str, u32>,
+) -> Result<Vec<(&'a str, Vec<String>)>, String> {
+    let result = match mnemonic.clone().as_str() {
+        "la" | "li" => {
+            let args_catch = if pseudo_args.len() == 2 {
+                let mut c = pseudo_args.clone();
+                c.insert(1, "0");
+                c
+            } else {
+                pseudo_args.clone()
+            };
+            enforce_length(&args_catch, 3)?;
+            let offset = base_parse(args_catch[1])?;
+            let base = label_or_imm(args_catch[2], labels)?;
+            let address = offset + base;
+
+            println!("{:x} {:x} {:x}", offset, base, address);
+            let (upper, lower) = ((address & 0xFFFF0000) >> 16, address & 0xFFFF);
+            println!("{:x} {:x}", upper, lower);
+
+            Ok(vec![
+                ("lui", vec!["$at".to_string(), upper.to_string()]),
+                (
+                    "ori",
+                    vec![
+                        args_catch[0].to_string(),
+                        "$at".to_string(),
+                        lower.to_string(),
+                    ],
+                ),
+            ])
+        }
+        _ => Ok(vec![(
+            mnemonic.as_str(),
+            pseudo_args.iter().map(|x| x.to_string()).collect(),
+        )]),
+    };
+
+    if let Ok(v) = &result {
+        if v.len() as u32 != get_pseudo_length(mnemonic.to_string()).unwrap_or(v.len() as u32) {
+            return Err(format!(
+                "Generated pseudo length for {} doesn't match expected length of {}",
+                mnemonic,
+                get_pseudo_length(mnemonic.to_string())?
+            ));
+        };
+    }
+
+    result
+}
+
 use crate::parser::*;
 use pest::Parser;
 
+fn scan_macro_args(tokens: &[String]) -> Vec<String> {
+    tokens
+        .to_vec()
+        .iter()
+        .map(|token| token.chars().filter(|c| !"(),".contains(*c)).collect())
+        .collect()
+}
+
+pub fn preprocess(mut input: String, input_as: &str) -> Result<String, String> {
+    let mut out = Vec::new();
+
+    let mut eqv: HashMap<String, String> = HashMap::new();
+    let mut mac: HashMap<String, (Vec<String>, String)> = HashMap::new();
+
+    let mut collecting_macro = false;
+    let mut macro_name: String = "".to_string();
+    let mut macro_args: Vec<String> = Vec::new();
+    let mut macro_buf = String::new();
+
+    let input_path = PathBuf::from(input_as);
+    let base_folder = input_path.parent().unwrap();
+
+    let regex = Regex::new(".include \"(?P<include_fn>.*)\"").unwrap();
+    for (_, [include_fn]) in regex.captures_iter(&input.clone()).map(|c| c.extract()) {
+        let file_contents: String = match fs::read_to_string(base_folder.join(include_fn)) {
+            Ok(v) => v,
+            Err(_) => return Err("Failed to read input file contents".to_string()),
+        };
+        input = regex.replace_all(&input, file_contents).to_string();
+    }
+
+    for mut line in input.lines() {
+        line = line.trim();
+
+        // Filter comments
+        if let Some(pos) = line.find('#') {
+            line = &line[0..pos]; // Remove the comment part
+        }
+
+        if line.is_empty() {
+            continue;
+        }
+
+        let tokens: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
+
+        // Handle .eqv directives
+        if tokens[0] == ".eqv" {
+            eqv.insert(tokens[1].clone(), tokens[2].clone());
+            continue;
+        }
+
+        // Handle .macro directives
+        if tokens[0] == ".macro" {
+            collecting_macro = true;
+            macro_name = tokens[1].clone();
+            // Remove the '(', ')', and ',',
+            macro_args = scan_macro_args(&tokens[2..]);
+            continue;
+        } else if tokens[0] == ".end_macro" {
+            collecting_macro = false;
+            mac.insert(macro_name.clone(), (macro_args.clone(), macro_buf.clone()));
+            continue;
+        }
+
+        // Replace via eqv
+        let mut tokens: Vec<String> = tokens
+            .iter()
+            .map(|token| {
+                let mut subbed_token = token.to_string();
+                for eqv_key in eqv.keys() {
+                    subbed_token = subbed_token.replace(eqv_key, eqv.get(eqv_key).unwrap())
+                }
+                subbed_token.to_owned()
+            })
+            .collect::<Vec<String>>();
+
+        // Replace via macro
+        if let Some(scanned_macro) = mac.get(tokens[0].as_str()) {
+            let input_args: Vec<String> = scan_macro_args(&tokens[1..]);
+            tokens.clear();
+            for macro_line in scanned_macro.1.lines() {
+                let mut subbed_in_line = macro_line.to_string().clone();
+                for (index, arg) in scanned_macro.0.iter().enumerate() {
+                    subbed_in_line = subbed_in_line.replace(arg, &input_args[index]);
+                }
+                out.push(subbed_in_line);
+            }
+            continue;
+        }
+
+        if collecting_macro {
+            macro_buf += (tokens.join(" ") + "\n").as_str();
+        } else {
+            out.push(tokens.join(" "));
+        }
+    }
+
+    Ok(out.join("\n"))
+}
+
 // General assembler entrypoint
-pub fn assemble(program_arguments: &Args) -> Result<(), String> {
+pub fn assemble(program_config: &Config, program_arguments: Args) -> Result<(), String> {
     // IO Setup
     let input_fn = &program_arguments.input_as;
     let output_fn = &program_arguments.output_as;
@@ -475,10 +744,21 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
     };
 
     // Read input
-    let file_contents: String = match fs::read_to_string(input_fn) {
+    let mut file_contents: String = match fs::read_to_string(input_fn) {
         Ok(v) => v,
         Err(_) => return Err("Failed to read input file contents".to_string()),
     };
+
+    // Preprocess
+    file_contents = if program_config.preprocess {
+        match preprocess(file_contents, input_fn) {
+            Ok(f) => f,
+            Err(e) => return Err(e.to_string()),
+        }
+    } else {
+        file_contents
+    };
+    // println!("{}", file_contents);
 
     // Parse into CST
     let cst = parse_rule(
@@ -487,7 +767,6 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
             .next()
             .unwrap(),
     );
-    print_cst(&cst);
 
     // Set up line info
     let lineinfo_fn = format!("{}.li", &program_arguments.output_as);
@@ -499,87 +778,114 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
         vec![cst]
     };
 
+    // General setup
+    let mut _assembly_mode = AssemblyMode::TextMode;
+    let mut text_section_address: u32 = TEXT_ADDRESS_BASE;
+
     // Assign addresses to labels
-    let mut current_addr: u32 = TEXT_ADDRESS_BASE;
     let mut labels: HashMap<&str, u32> = HashMap::new();
     for sub_cst in &vernac_sequence {
-        match sub_cst {
+        // The instruction width of the currently-parsed instruction
+        // Should be 1 if not a pseudo
+        let unwrapped_pseudo_length = match sub_cst {
             MipsCST::Label(label_str) => {
-                println!("Inserting label {} at {:x}", label_str, current_addr);
-                labels.insert(label_str, current_addr);
+                println!("Label: {}", label_str);
+                println!(
+                    "Inserting label {} at 0x{:x}",
+                    label_str, text_section_address
+                );
+                labels.insert(label_str, text_section_address);
                 continue;
             }
-            MipsCST::Instruction(_, _) => (),
             MipsCST::Sequence(_) => unreachable!(),
+            MipsCST::Directive(_, _) => continue,
+            MipsCST::Instruction(mnemonic, _) => {
+                println!("Instruction: {}", mnemonic);
+                get_pseudo_length(mnemonic.to_string()).unwrap_or(1)
+            }
         };
 
-        current_addr += MIPS_INSTR_BYTE_WIDTH
+        text_section_address += MIPS_INSTR_BYTE_WIDTH * unwrapped_pseudo_length;
     }
 
-    current_addr = TEXT_ADDRESS_BASE;
+    text_section_address = TEXT_ADDRESS_BASE;
 
     // Assemble instructions
     for sub_cst in vernac_sequence {
         match sub_cst {
-            MipsCST::Instruction(mnemonic, args) => {
+            MipsCST::Instruction(root_mnemonic, root_args) => {
+                let rm = root_mnemonic.to_string();
+                let to_assemble = expand_pseudo(&rm, root_args.clone(), &labels)?;
+
                 // Update line info
                 lineinfo.push(LineInfo {
-                    instr_addr: current_addr,
+                    instr_addr: text_section_address,
                     line_number: 0,
-                    line_contents: instr_to_str(mnemonic, &args),
+                    line_contents: instr_to_str(root_mnemonic, &root_args),
                     psuedo_op: "".to_string(),
                 });
 
-                if let Ok(instr_info) = r_operation(mnemonic) {
-                    println!("-----------------------------------");
-                    println!(
-                        "[R] {} - shamt [{:x}] - funct [{:x}]",
-                        mnemonic, instr_info.shamt, instr_info.funct
-                    );
-                    match assemble_r(instr_info, args) {
-                        Ok(assembled_r) => {
-                            if write_u32(&output_file, assembled_r).is_err() {
-                                return Err("Failed to write to output binary".to_string());
+                for (mnemonic, args) in to_assemble.iter() {
+                    let args = args.iter().map(|x| x.as_str()).collect();
+                    if let Ok(instr_info) = r_operation(mnemonic) {
+                        println!("-----------------------------------");
+                        println!(
+                            "[R] {} - shamt [{:x}] - funct [{:x}] - args {:?}",
+                            mnemonic, instr_info.shamt, instr_info.funct, args
+                        );
+                        match assemble_r(instr_info, args) {
+                            Ok(assembled_r) => {
+                                if write_u32(&output_file, assembled_r).is_err() {
+                                    return Err("Failed to write to output binary".to_string());
+                                }
                             }
+                            Err(e) => return Err(e.to_string()),
                         }
-                        Err(e) => return Err(e.to_string()),
-                    }
-                } else if let Ok(instr_info) = i_operation(mnemonic) {
-                    println!("-----------------------------------");
-                    println!("[I] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
+                    } else if let Ok(instr_info) = i_operation(mnemonic) {
+                        println!("-----------------------------------");
+                        println!(
+                            "[I] {} - opcode [{:x}] - args {:?}",
+                            mnemonic, instr_info.opcode, args
+                        );
 
-                    match assemble_i(instr_info, args, &labels, current_addr) {
-                        Ok(assembled_i) => {
-                            if write_u32(&output_file, assembled_i).is_err() {
-                                return Err("Failed to write to output binary".to_string());
+                        match assemble_i(instr_info, args, &labels, text_section_address) {
+                            Ok(assembled_i) => {
+                                if write_u32(&output_file, assembled_i).is_err() {
+                                    return Err("Failed to write to output binary".to_string());
+                                }
                             }
+                            Err(e) => return Err(e.to_string()),
                         }
-                        Err(e) => return Err(e.to_string()),
-                    }
-                } else if let Ok(instr_info) = j_operation(mnemonic) {
-                    println!("-----------------------------------");
-                    println!("[J] {} - opcode [{:x}]", mnemonic, instr_info.opcode);
+                    } else if let Ok(instr_info) = j_operation(mnemonic) {
+                        println!("-----------------------------------");
+                        println!(
+                            "[J] {} - opcode [{:x}] - args {:?}",
+                            mnemonic, instr_info.opcode, args
+                        );
 
-                    match assemble_j(instr_info, args, &labels) {
-                        Ok(assembled_j) => {
-                            if write_u32(&output_file, assembled_j).is_err() {
-                                return Err("Failed to write to output binary".to_string());
+                        match assemble_j(instr_info, args, &labels) {
+                            Ok(assembled_j) => {
+                                if write_u32(&output_file, assembled_j).is_err() {
+                                    return Err("Failed to write to output binary".to_string());
+                                }
                             }
+                            Err(e) => return Err(e.to_string()),
                         }
-                        Err(e) => return Err(e.to_string()),
+                    } else {
+                        return Err(format!("Failed to match instruction {}", mnemonic));
                     }
-                } else {
-                    return Err("Failed to match instruction".to_string());
+
+                    text_section_address += MIPS_INSTR_BYTE_WIDTH;
                 }
             }
-            MipsCST::Label(_) => {
-                //line_number += 1;
-                continue;
-            }
+            MipsCST::Directive(mnemonic, _args) => match mnemonic {
+                "text" => _assembly_mode = AssemblyMode::TextMode,
+                "data" => _assembly_mode = AssemblyMode::DataMode,
+                "eqv" | "macro" => (),
+                _ => return Err(format!("Directive .{} not yet supported", mnemonic).to_string()),
+            },
             _ => continue,
         };
-
-        current_addr += MIPS_INSTR_BYTE_WIDTH;
     }
 
     if program_arguments.line_info {
