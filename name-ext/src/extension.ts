@@ -67,12 +67,12 @@ export function activate(context: vscode.ExtensionContext) {
 				// Build and run assembler
 				terminal.sendText(`cd ${nameASPath}`);
 				terminal.sendText('cargo build --release');
-				terminal.sendText(`cargo run ${nameDefaultCfgPath} ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o`);
+				terminal.sendText(`cargo run ${nameDefaultCfgPath} ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o -l`);
 				
 				// Build and run emulator
 				terminal.sendText(`cd ${nameEMUPath}`);
 				terminal.sendText('cargo build --release');
-				terminal.sendText(`cargo run 63321 ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o`);
+				terminal.sendText(`cargo run 63321 ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o /tmp/${currentlyOpenTabFileName}.o.li`);
 
 				// Exit when emulator quits
 				terminal.sendText('exit');
