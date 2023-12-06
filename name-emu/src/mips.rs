@@ -52,9 +52,7 @@ pub const IMMEDIATE_PRETTY_PRINT: usize = 32;
 enum BranchDelays {
     NotActive,
     Set,
-    SetAbsolute,
-    Ready,
-    ReadyAbsolute
+    Ready
 }
 
 // https://www.reddit.com/r/rust/comments/6175al/arbitrary_width_sign_extension_in_rust/
@@ -73,8 +71,7 @@ pub(crate) struct Mips {
 
     // Branch delay slots are implemented by filling this buffer with the
     // branch target, which will be triggered after the following instruction
-    branch_delay_target: i32,
-    branch_delay_target_abs: u32,
+    branch_delay_target: usize,
     branch_delay_status: BranchDelays,
     
 
@@ -103,7 +100,6 @@ impl Default for Mips {
             mult_lo: 0,
             pc: 0,
             branch_delay_target: 0,
-            branch_delay_target_abs: 0,
             branch_delay_status: BranchDelays::NotActive,
             memories: vec![],
             stop_address: 0,
@@ -223,6 +219,13 @@ impl Mips {
         }
         Ok(())
     }
+
+    // This is a helper function for doing branches
+    fn configure_branch(&mut self, ins: Itype) {
+        self.branch_delay_target = self.pc.wrapping_add_signed(sign_extend(((ins.imm as u32) << 2) as i32, 18) as isize);
+        self.branch_delay_status = BranchDelays::Set;
+    }
+
     fn dispatch_i(&mut self, ins: Itype, opcode: u32) -> Result<(), ExecutionErrors> {
 
         let memory_address = self.regs[ins.rs].wrapping_add(ins.imm as u32);
@@ -232,10 +235,7 @@ impl Mips {
             // MIPS manual says: If the contents of GPR rs are less than zero (sign bit is 1)
             0x6 => {
                 if self.regs[ins.rs] as i32 <= 0 {
-                    // Ugh. How do I handle this?
-                    // This is an 18-bit signed integer. How do I even make that in Rust
-                    self.branch_delay_target = sign_extend(ins.imm as u32 as i32, 18);
-                    self.branch_delay_status = BranchDelays::Set;
+                    self.configure_branch(ins);
                 }
             }
             // Branch on Greater than Zero
@@ -243,8 +243,7 @@ impl Mips {
             // are greater than zero (sign bit is 0 but value not zero)
             0x7 => {
                 if self.regs[ins.rs] > 0 {
-                    self.branch_delay_target = sign_extend(((ins.imm as u32) << 2) as i32, 18);
-                    self.branch_delay_status = BranchDelays::Set;
+                    self.configure_branch(ins);
                 }
             }
             // Add Immediate
@@ -331,15 +330,13 @@ impl Mips {
             // Branch if Equal
             0x4 => {
                 if self.regs[ins.rt] == self.regs[ins.rs] {
-                    self.branch_delay_target = sign_extend(ins.imm as u32 as i32, 18);
-                    self.branch_delay_status = BranchDelays::Set;
+                    self.configure_branch(ins);
                 }
             }
             // Branch if Not Equal
             0x5 => {
                 if self.regs[ins.rt] != self.regs[ins.rs] {
-                    self.branch_delay_target = sign_extend(ins.imm as u32 as i32, 18);
-                    self.branch_delay_status = BranchDelays::Set;
+                    self.configure_branch(ins);
                 }
             }
             
@@ -355,15 +352,17 @@ impl Mips {
         match ins.opcode {
             // Jump absolute
             2 => {
-                self.branch_delay_status = BranchDelays::SetAbsolute;
-                self.branch_delay_target_abs = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+                self.branch_delay_status = BranchDelays::Set;
+                self.branch_delay_target = (self.pc as u32 & 0xF0000000 | (ins.dest << 2)) as usize;
             }
             // Jump And Link
             3 => {
-                self.branch_delay_status = BranchDelays::SetAbsolute;
-                self.branch_delay_target_abs = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+                self.branch_delay_status = BranchDelays::Set;
+                self.branch_delay_target = (self.pc as u32 & 0xF0000000 | (ins.dest << 2)) as usize;
                 // $ra = register 31
-                self.regs[31] = self.pc as u32 + 8;
+
+                // CODE SMELL— This has to be adjusted when branch delays are turned off!!
+                self.regs[31] = self.pc as u32 + 4;
             }
             _ => return Err(ExecutionErrors::UndefinedInstruction {instruction: opcode})
         }
@@ -479,7 +478,7 @@ impl Mips {
         let mut bytes = vec![];
         bytes.write_u16::<LittleEndian>(value).unwrap();
         self.write_b(address, bytes[0])?;
-        self.write_b(address, bytes[1])?;
+        self.write_b(address + 1, bytes[1])?;
         Ok(())
     }
     // Writes a word in little endian form
@@ -487,9 +486,9 @@ impl Mips {
         let mut bytes = vec![];
         bytes.write_u32::<LittleEndian>(value).unwrap();
         self.write_b(address, bytes[0])?;
-        self.write_b(address, bytes[1])?;
-        self.write_b(address, bytes[2])?;
-        self.write_b(address, bytes[3])?;
+        self.write_b(address + 1, bytes[1])?;
+        self.write_b(address + 2, bytes[2])?;
+        self.write_b(address + 3, bytes[3])?;
         Ok(())
     }
     // Writes a block of memory, if it exists
@@ -534,18 +533,8 @@ impl Mips {
         match self.branch_delay_status {
             BranchDelays::NotActive => (),
             BranchDelays::Set => self.branch_delay_status = BranchDelays::Ready,
-            BranchDelays::SetAbsolute => self.branch_delay_status = BranchDelays::ReadyAbsolute,
             BranchDelays::Ready => {
-                // https://stackoverflow.com/questions/54035728/how-to-add-a-negative-i32-number-to-an-usize-variable
-                if self.branch_delay_target.is_negative() {
-                    self.pc = self.pc.wrapping_sub(self.branch_delay_target.wrapping_abs() as u32 as usize);
-                } else {
-                    self.pc = self.pc.wrapping_add(self.branch_delay_target as usize);
-                }
-                self.branch_delay_status = BranchDelays::NotActive;
-            }
-            BranchDelays::ReadyAbsolute => {
-                self.pc = self.branch_delay_target_abs as usize;
+                self.pc = self.branch_delay_target;
                 self.branch_delay_status = BranchDelays::NotActive;
             }
         }
