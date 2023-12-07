@@ -104,6 +104,17 @@
         }
       ]
     },
+    "configuration": {
+      "type": "object",
+      "title": "name-ext",
+      "properties": {
+        "name-ext.namePath": {
+          "type": "string",
+          "default": "~/Desktop/name",
+          "description": "The path to your NAME installation"
+        }
+      }
+    },
     "commands": [
       {
         "command": "extension.vsname.debugEditorContents",
@@ -124,78 +135,80 @@
         "title": "Toggle between decimal and hex formatting"
       },
       {
-        "command": "extension.vsname.helloWorld",
-        "title": "Hello World"
+        "command": "extension.vsname.startEmu",
+        "title": "Start Emulator"
       }
     ],
-		"languages": [
-			{
-				"id": "mips-assembly",
-				"extensions": [
-					".asm",
-					".s"
-				],
-				"aliases": [
-					"Assembler file"
-				]
-			}
-		],
-
+    "languages": [
+      {
+        "id": "mips-assembly",
+        "extensions": [
+          ".asm",
+          ".s"
+        ],
+        "aliases": [
+          "Assembler file"
+        ]
+      }
+    ],
     "breakpoints": [
       {
         "language": "mips-assembly"
       }
     ],
-    "debuggers": [{
-      "type": "vsname",
-      "languages": ["mips-assembly"],
-      "label": "MIPS Debug",
-      "program": "/home/qwe/Documents/CS4485/name/name-emu/target/release/name",
-      "configurationAttributes": {
-        "launch": {
-          "required": ["program"],
-          "properties": {
-            "program": {
-              "type": "string",
-              "description": "Absolute path to a text file.",
-              "default": "${workspaceFolder}/${command:AskForProgramName}"
-            },
-            "stopOnEntry": {
-              "type": "boolean",
-              "description": "Automatically stop after launch.",
-              "default": true
+    "debuggers": [
+      {
+        "type": "vsname",
+        "languages": [
+          "mips-assembly"
+        ],
+        "label": "MIPS Debug",
+        "program": "/home/qwe/Documents/CS4485/name/name-emu/target/release/name",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to a text file.",
+                "default": "${workspaceFolder}/${command:AskForProgramName}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop after launch.",
+                "default": true
+              }
             }
           }
-        }
-      },
-
-      "initialConfigurations": [
-        {
-          "type": "vsname",
-          "request": "launch",
-          "name": "Ask for file name",
-          "program": "${workspaceFolder}/${command:AskForProgramName}",
-          "stopOnEntry": true
-        }
-      ],
-
-      "configurationSnippets": [
-        {
-          "label": "NAME Debug: Launch",
-          "description": "A new configuration for launching a NAME debug program",
-          "body": {
+        },
+        "initialConfigurations": [
+          {
             "type": "vsname",
             "request": "launch",
-            "name": "${2:Launch Program}",
-            "program": "^\"\\${workspaceFolder}/${1:Program}\""
+            "name": "Ask for file name",
+            "program": "${workspaceFolder}/${command:AskForProgramName}",
+            "stopOnEntry": true
           }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "NAME Debug: Launch",
+            "description": "A new configuration for launching a NAME debug program",
+            "body": {
+              "type": "vsname",
+              "request": "launch",
+              "name": "${2:Launch Program}",
+              "program": "^\"\\${workspaceFolder}/${1:Program}\""
+            }
+          }
+        ],
+        "variables": {
+          "AskForProgramName": "extension.vsname-debug.getProgramName"
         }
-      ],
-
-      "variables": {
-        "AskForProgramName": "extension.vsname-debug.getProgramName"
       }
-    }]
+    ]
   },
   "dependencies": {
     "@vscode/debugprotocol": "^1.63.0"

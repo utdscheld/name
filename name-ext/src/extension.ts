@@ -2,20 +2,86 @@
 // Import the module and reference it with the alias vscode in your code below
 'use strict';
 import * as vscode from 'vscode';
-import { HelloWorldPanel } from './HelloWorldPanel';
 import * as Net from 'net';
 import { activateNameDebug } from './activateNameDebug';
+import * as path from 'path';
+const { spawn } = require('child_process');
+
+const termName = "NAME Emulator";
 
 const runMode: 'external' | 'server' | 'namedPipeServer' | 'inline' = 'server';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	console.log('Congratulations, your extension "testinghi" is now active!');
-
 	context.subscriptions.push(
-		vscode.commands.registerCommand("extension.vsname.helloWorld", () => {
-			HelloWorldPanel.createOrShow(context.extensionUri);
+		vscode.commands.registerCommand("extension.vsname.startEmu", () => {
+			// User configuration
+			var configuration = vscode.workspace.getConfiguration('name-ext');
+			if (!configuration) {
+				vscode.window.showErrorMessage("Failed to find NAME configurations");
+				return;
+			}
+
+			const namePath = configuration.get('namePath', '');
+			if (namePath.length < 1) {
+				vscode.window.showErrorMessage(`Failed to find a path for NAME, please set the path in VSCode's User Settings under name-ext`);
+				return;
+			}
+
+			const nameASPath = path.join(namePath, 'name-as');
+			const nameDefaultCfgPath = path.join(nameASPath, 'configs/default.toml');
+			const nameEMUPath = path.join(namePath, 'name-emu');
+			const nameEXTPath = path.join(namePath, 'name-ext');
+
+			// Start the extension with 'npm run watch'
+			// We def don't need the watch feature in the prod distribution but we can remove that later
+			const child = spawn(
+				'npm', ['run', 'watch'], {
+					cwd: nameEXTPath
+				}
+			);
+
+			child.on('error', (_) => {
+				vscode.window.showErrorMessage(`Failed to start name-ext, please ensure you have npm installed`);
+			});
+
+			child.on('exit', (code, _) => {
+				if (code !== 0) {
+					vscode.window.showErrorMessage(`name-ext exited with code ${code}`);
+				}
+			});
+
+			var editor = vscode.window.activeTextEditor;			
+			if (editor) {
+				// Get currently-open file path
+				var currentlyOpenTabFilePath = editor.document.fileName;
+				var currentlyOpenTabFileName = path.basename(currentlyOpenTabFilePath);
+
+				const terminalOptions = { name: termName, closeOnExit: true };
+				var terminal = vscode.window.terminals.find(terminal => terminal.name === termName);
+				terminal = terminal ? terminal : vscode.window.createTerminal(terminalOptions);
+				terminal.show();
+				terminal.sendText('clear');
+
+				// Build and run assembler
+				terminal.sendText(`cd ${nameASPath}`);
+				terminal.sendText('cargo build --release');
+				terminal.sendText(`cargo run ${nameDefaultCfgPath} ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o -l`);
+				
+				// Build and run emulator
+				terminal.sendText(`cd ${nameEMUPath}`);
+				terminal.sendText('cargo build --release');
+				terminal.sendText(`cargo run 63321 ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o /tmp/${currentlyOpenTabFileName}.o.li`);
+
+				// Exit when emulator quits
+				terminal.sendText('exit');
+			}
+
+			// Kill child process if it's still alive
+			if (child) {
+				child.kill();
+			}
 		})
 	);
 

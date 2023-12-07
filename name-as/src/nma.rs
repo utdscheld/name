@@ -574,7 +574,6 @@ pub fn assemble(program_arguments: &Args) -> Result<(), String> {
                 }
             }
             MipsCST::Label(_) => {
-                //line_number += 1;
                 continue;
             }
             _ => continue,
