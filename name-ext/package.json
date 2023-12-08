@@ -136,7 +136,13 @@
       },
       {
         "command": "extension.vsname.startEmu",
-        "title": "Start Emulator"
+        "title": "Start Emulator",
+        "category" : "NAME"
+      },
+      {
+        "command": "extension.vsname.startAndDebug",
+        "title": "Start Emulator and Begin Debugging Current File",
+        "category" : "NAME"
       }
     ],
     "languages": [
