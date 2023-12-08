@@ -4,14 +4,12 @@ use std::io::Cursor;
 use std::fs::File;
 use std::io::Write;
 
-use crate::exception::{ExecutionErrors, ExecutionEvents};
 
-pub const DOT_TEXT_START_ADDRESS: u32 = 0x00400000;
-const DOT_TEXT_MAX_LENGTH: u32 = 0x1000;
-const LEN_TEXT_INITIAL: usize = 200;
+use crate::{exception::{ExecutionErrors, ExecutionEvents}, syscall::syscall};
+
 const MIPS_INSTRUCTION_LENGTH: usize = 4;
 
-pub const REGISTER_NAMES: [&str; 32] = [
+pub const REGISTER_NAMES: [&str; 33] = [
     "$zero",
     "$at",
     "$v0",
@@ -43,15 +41,24 @@ pub const REGISTER_NAMES: [&str; 32] = [
     "$gp",
     "$sp",
     "$fp",
-    "$ra"
+    "$ra",
+    // See below constant. Used for exception printing
+    "Immediate"
 ];
 pub const PC_NAME: &str = "$pc";
+pub const IMMEDIATE_PRETTY_PRINT: usize = 32;
 
 #[derive(Debug)]
 enum BranchDelays {
     NotActive,
     Set,
     Ready
+}
+
+// https://www.reddit.com/r/rust/comments/6175al/arbitrary_width_sign_extension_in_rust/
+fn sign_extend(x: i32, nbits: u32) -> i32 {
+	let notherbits = std::mem::size_of_val(&x) as u32 * 8 - nbits;
+  	x.wrapping_shl(notherbits).wrapping_shr(notherbits)
 }
 
 #[derive(Debug)]
@@ -64,7 +71,7 @@ pub(crate) struct Mips {
 
     // Branch delay slots are implemented by filling this buffer with the
     // branch target, which will be triggered after the following instruction
-    branch_delay_target: u32,
+    branch_delay_target: usize,
     branch_delay_status: BranchDelays,
     
 
@@ -91,13 +98,11 @@ impl Default for Mips {
             floats: [0f32; 32],
             mult_hi: 0,
             mult_lo: 0,
-            pc: DOT_TEXT_START_ADDRESS as usize,
+            pc: 0,
             branch_delay_target: 0,
             branch_delay_status: BranchDelays::NotActive,
-            memories: vec![
-                (vec![0; LEN_TEXT_INITIAL], DOT_TEXT_START_ADDRESS, DOT_TEXT_MAX_LENGTH)   
-            ],
-            stop_address: DOT_TEXT_START_ADDRESS as usize,
+            memories: vec![],
+            stop_address: 0,
             prev_ins_result: Ok(())
         }
     }
@@ -149,6 +154,16 @@ impl Mips {
             // Shift-right logical
             0x2 => {
                 self.regs[ins.rd] = self.regs[ins.rt] >> ins.shamt;
+            }
+            // Jump Register
+            0x8 => {
+                self.pc = self.regs[ins.rs] as usize;
+            }
+            // System Call
+            0xC => {
+                // Grab 20-bit code field
+                let code = (opcode >> 6) & 0xFFFFF;
+                syscall(self, code)?;
             }
             // Add
             0x20 => {
@@ -204,11 +219,52 @@ impl Mips {
         }
         Ok(())
     }
+
+    // This is a helper function for doing branches
+    fn configure_branch(&mut self, ins: Itype) {
+        self.branch_delay_target = self.pc.wrapping_add_signed(sign_extend(((ins.imm as u32) << 2) as i32, 18) as isize);
+        self.branch_delay_status = BranchDelays::Set;
+    }
+
     fn dispatch_i(&mut self, ins: Itype, opcode: u32) -> Result<(), ExecutionErrors> {
 
-        let memory_address = (ins.rt as i64 + (ins.imm as i64)) as u32;
+        let memory_address = self.regs[ins.rs].wrapping_add(ins.imm as u32);
 
         match ins.opcode {
+            // Branch on Less than Zero
+            // MIPS manual says: If the contents of GPR rs are less than zero (sign bit is 1)
+            0x6 => {
+                if self.regs[ins.rs] as i32 <= 0 {
+                    self.configure_branch(ins);
+                }
+            }
+            // Branch on Greater than Zero
+            // MIPS manual says: If the contents of GPR rs 
+            // are greater than zero (sign bit is 0 but value not zero)
+            0x7 => {
+                if self.regs[ins.rs] > 0 {
+                    self.configure_branch(ins);
+                }
+            }
+            // Add Immediate
+            0x8 => {
+                let result = self.regs[ins.rs].checked_add_signed(ins.imm as i16 as i32);
+                match result {
+                    Some(value) => {self.regs[ins.rt] = value;}
+                    None => {
+                        return Err(ExecutionErrors::IntegerOverflow { 
+                        rt: IMMEDIATE_PRETTY_PRINT, 
+                        rs: ins.rs, 
+                        value1: ins.imm as u32,
+                        value2: self.regs[ins.rs]
+                        });
+                    }
+                }
+            }
+            // Add Immediate Unsigned
+            0x9 => {
+                self.regs[ins.rt] = self.regs[ins.rs].wrapping_add(ins.imm as u32);
+            }
             // Set on Less Than Immediate (signed)
             // If rs is less than sign-extended 16 bit immediate using signed comparison, then set rt to 1
             // Casting on imm is to sign extend. See load byte casts
@@ -274,15 +330,13 @@ impl Mips {
             // Branch if Equal
             0x4 => {
                 if self.regs[ins.rt] == self.regs[ins.rs] {
-                    self.branch_delay_target = (ins.imm as u32) << 2;
-                    self.branch_delay_status = BranchDelays::Set;
+                    self.configure_branch(ins);
                 }
             }
             // Branch if Not Equal
             0x5 => {
                 if self.regs[ins.rt] != self.regs[ins.rs] {
-                    self.branch_delay_target = (ins.imm as u32) << 2;
-                    self.branch_delay_status = BranchDelays::Set;
+                    self.configure_branch(ins);
                 }
             }
             
@@ -299,14 +353,16 @@ impl Mips {
             // Jump absolute
             2 => {
                 self.branch_delay_status = BranchDelays::Set;
-                self.branch_delay_target = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+                self.branch_delay_target = (self.pc as u32 & 0xF0000000 | (ins.dest << 2)) as usize;
             }
             // Jump And Link
             3 => {
                 self.branch_delay_status = BranchDelays::Set;
-                self.branch_delay_target = self.pc as u32 & 0xF0000000 | (ins.dest << 2);
+                self.branch_delay_target = (self.pc as u32 & 0xF0000000 | (ins.dest << 2)) as usize;
                 // $ra = register 31
-                self.regs[31] = self.pc as u32 + 8;
+
+                // CODE SMELL— This has to be adjusted when branch delays are turned off!!
+                self.regs[31] = self.pc as u32 + 4;
             }
             _ => return Err(ExecutionErrors::UndefinedInstruction {instruction: opcode})
         }
@@ -316,7 +372,7 @@ impl Mips {
 
     fn decode(&self, instruction: u32) -> Instructions {
         let opcode = instruction >> 26 & 0b111111;
-        match opcode {
+            match opcode {
             // R-type
             0 => {
                 Instructions::R(Rtype {
@@ -392,6 +448,15 @@ impl Mips {
                         self.read_b(address + 2)?, self.read_b(address + 3)?];
         Ok(Cursor::new(bytes).read_u32::<LittleEndian>().unwrap())
     }
+    // Returns a reference to a block of memory, if it exists.
+    pub fn read_block(&mut self, address: u32, len: u32) -> Result<&[u8], ExecutionErrors> {
+        if let Some((memory, offset)) = self.map_memory(address) {
+            if memory.len() <= (len + offset) as usize {
+                return Ok(&memory[offset as usize .. (offset + len) as usize]);
+            }
+        }
+        Err(ExecutionErrors::MemoryIllegalAccess { load_address: address })
+    }
 
     
     // Writes one byte
@@ -413,7 +478,7 @@ impl Mips {
         let mut bytes = vec![];
         bytes.write_u16::<LittleEndian>(value).unwrap();
         self.write_b(address, bytes[0])?;
-        self.write_b(address, bytes[1])?;
+        self.write_b(address + 1, bytes[1])?;
         Ok(())
     }
     // Writes a word in little endian form
@@ -421,10 +486,20 @@ impl Mips {
         let mut bytes = vec![];
         bytes.write_u32::<LittleEndian>(value).unwrap();
         self.write_b(address, bytes[0])?;
-        self.write_b(address, bytes[1])?;
-        self.write_b(address, bytes[2])?;
-        self.write_b(address, bytes[3])?;
+        self.write_b(address + 1, bytes[1])?;
+        self.write_b(address + 2, bytes[2])?;
+        self.write_b(address + 3, bytes[3])?;
         Ok(())
+    }
+    // Writes a block of memory, if it exists
+    pub fn write_block(&mut self, address: u32, len: u32, data: &[u8]) -> Result<(), ExecutionErrors> {
+        if let Some((memory, offset)) = self.map_memory(address) {
+            if memory.len() <= (len + offset) as usize {
+                memory[offset as usize .. (offset + len) as usize].copy_from_slice(data);
+                return Ok(())
+            }
+        }
+        Err(ExecutionErrors::MemoryIllegalAccess { load_address: address })
     }
 
     pub fn step_one(&mut self, mut f :&mut File) -> Result<(), ExecutionErrors> {
@@ -459,7 +534,7 @@ impl Mips {
             BranchDelays::NotActive => (),
             BranchDelays::Set => self.branch_delay_status = BranchDelays::Ready,
             BranchDelays::Ready => {
-                self.pc = self.branch_delay_target as usize;
+                self.pc = self.branch_delay_target;
                 self.branch_delay_status = BranchDelays::NotActive;
             }
         }

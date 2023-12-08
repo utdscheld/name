@@ -1,9 +1,12 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
 use dap::events::{StoppedEventBody, ExitedEventBody, TerminatedEventBody};
 use dap::responses::{ReadMemoryResponse, SetExceptionBreakpointsResponse, ThreadsResponse, StackTraceResponse, ScopesResponse, VariablesResponse, ContinueResponse};
 use dap::types::{StoppedEventReason, Thread, StackFrame, Scope, Source, Variable};
+use elf::endian::{AnyEndian, LittleEndian};
+use elf::section::SectionHeader;
 use thiserror::Error;
 
 use dap::prelude::*;
@@ -16,9 +19,15 @@ use exception::{ExecutionErrors, exception_pretty_print, ExecutionEvents};
 
 use name_const::lineinfo::{LineInfo, lineinfo_import};
 
+mod syscall;
+
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
 use std::net::TcpListener;
+
+use elf::ElfBytes;
+use elf::segment::ProgramHeader;
+use elf::abi::PT_LOAD;
 
 #[derive(Error, Debug)]
 enum MyAdapterError {
@@ -37,19 +46,33 @@ enum MyAdapterError {
 
 type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-fn reset_mips(program_data: &[u8]) -> Mips {
+fn reset_mips(elf_file: &Vec<u8>, elf_parsed: &ElfBytes<'_, LittleEndian>, segments: &Vec<ProgramHeader>) -> Mips {
   // Reset execution and begin again.
-  let mut mips: Mips = Default::default();  
+  let mut mips: Mips = Default::default();
+  mips.pc = elf_parsed.ehdr.e_entry as usize;
 
-  for (i, byte) in program_data.iter().enumerate() {
-    mips.write_b(mips::DOT_TEXT_START_ADDRESS + i as u32, *byte).unwrap();
+  for phdr in segments {
+    mips.memories.push((elf_file[phdr.p_offset as usize .. (phdr.p_offset + phdr.p_filesz) as usize].to_vec(), phdr.p_vaddr as u32, phdr.p_filesz as u32));
+
+    // WARNING: BROKEN
+    if elf_parsed.ehdr.e_entry == phdr.p_vaddr {
+      mips.stop_address = (phdr.p_vaddr + phdr.p_filesz) as usize;
+    }
   }
-  mips.stop_address = mips::DOT_TEXT_START_ADDRESS as usize + program_data.len();
 
   mips
 }
 
 fn main() -> DynResult<()> {
+
+
+  let elf_file_data = std::fs::read("/home/qwe/Documents/CS4485/Fibonacci_linked").unwrap();
+  let elf_file = ElfBytes::<elf::endian::LittleEndian>::minimal_parse(elf_file_data.as_slice()).unwrap();
+  let elf_all_load_phdrs: Vec<ProgramHeader> = elf_file.segments().unwrap()
+    .iter()
+    .filter(|phdr|{phdr.p_type == PT_LOAD})
+    .collect();
+
 
   let args_strings: Vec<String> = env::args().collect();
 
@@ -164,7 +187,7 @@ loop {
   
       server.send_event(Event::Initialized)?;
 
-      mips = reset_mips(&program_data);
+      mips = reset_mips(&elf_file_data, &elf_file, &elf_all_load_phdrs);
 
     }
 
@@ -426,7 +449,7 @@ loop {
     }
 
     Command::Restart(_) => {
-      mips = reset_mips(&program_data);
+      mips = reset_mips(&elf_file_data, &elf_file, &elf_all_load_phdrs);
 
       let rsp = req.success(
         ResponseBody::Restart
@@ -469,7 +492,9 @@ loop {
       }
       // OK, what happened?
       let stopped_event_body = match mips.prev_ins_result {
-        Ok(()) => unreachable!(), // It's unreachable.
+        Ok(()) => {
+          unreachable!()// It's unreachable.
+        }
         Err(what_happened) => match what_happened {
           ExecutionErrors::Event{event} => match event {
             ExecutionEvents::ProgramComplete => {
