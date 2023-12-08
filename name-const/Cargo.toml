@@ -1,13 +1,10 @@
 [package]
-name = "name"
+name = "name_const"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-name_const = { version = "0.1.0", path = "../name-const" }
-pest = "2.7.4"
-pest_derive = "2.7.4"
 serde = { version = "1.0.188", features = ["derive"] }
 toml = "0.7.6"

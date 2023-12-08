@@ -1,6 +1,7 @@
 /// NAME Mips Assembler
 use crate::args::Args;
-use crate::lineinfo::*;
+//use crate::lineinfo::*;
+use name_const::lineinfo::*;
 use crate::parser::print_cst;
 use std::collections::HashMap;
 use std::fs;

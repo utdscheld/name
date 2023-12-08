@@ -6,6 +6,8 @@ name-emu/target
 name-emu/Cargo.lock
 name-as/target
 name-as/Cargo.lock
+name-const/target
+name-const/Cargo.lock
 .obsidian
 *.vsix
 target/*
