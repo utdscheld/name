@@ -81,6 +81,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 				// Exit when emulator quits
 				terminal.sendText('exit');
+				terminal.sendText('cd ${namePath}');
+				terminal.sendText('rm -r tmp');
 			}
 
 			// Kill child process if it's still alive
