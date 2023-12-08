@@ -91,6 +91,15 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		})
 	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand("extension.vsname.startAndDebug", () => {
+			vscode.commands.executeCommand('extension.vsname.startEmu');
+
+			setTimeout(() => {
+				vscode.commands.executeCommand('workbench.action.debug.start');
+			}, 6000);
+		})
+	);
 
 	// debug adapters can be run in different ways by using a vscode.DebugAdapterDescriptorFactory:
 	switch (runMode) {
