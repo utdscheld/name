@@ -32,7 +32,13 @@ pub(crate) fn syscall(mips: &mut Mips, code: u32) -> Result<(), ExecutionErrors>
         10 => {
             Err(ExecutionErrors::Event { event: ExecutionEvents::ProgramComplete })
         }
-
+        // Print char. Writes the value in $a0 as a char to the screen
+        11 => {
+            if let Some(c) = std::char::from_u32(mips.regs[4]) {
+                print!("{}", c);
+            }
+            Ok(())
+        }
         _ => Err(ExecutionErrors::SyscallInvalidSyscallNumber)
     }
 }
