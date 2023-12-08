@@ -30,6 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			const nameASPath = path.join(namePath, 'name-as');
+			const nameTMPPath = path.join(namePath, 'tmp');
 			const nameDefaultCfgPath = path.join(nameASPath, 'configs/default.toml');
 			const nameEMUPath = path.join(namePath, 'name-emu');
 			const nameEXTPath = path.join(namePath, 'name-ext');
@@ -64,15 +65,19 @@ export function activate(context: vscode.ExtensionContext) {
 				terminal.show();
 				terminal.sendText('clear');
 
+				// Make the temp directory
+				terminal.sendText(`cd ${namePath}`);
+				terminal.sendText(`mkdir tmp`);
+
 				// Build and run assembler
 				terminal.sendText(`cd ${nameASPath}`);
 				terminal.sendText('cargo build --release');
-				terminal.sendText(`cargo run ${nameDefaultCfgPath} ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o -l`);
+				terminal.sendText(`cargo run ${nameDefaultCfgPath} ${currentlyOpenTabFilePath} ${nameTMPPath}/${currentlyOpenTabFileName}.o -l`);
 				
 				// Build and run emulator
 				terminal.sendText(`cd ${nameEMUPath}`);
 				terminal.sendText('cargo build --release');
-				terminal.sendText(`cargo run 63321 ${currentlyOpenTabFilePath} /tmp/${currentlyOpenTabFileName}.o /tmp/${currentlyOpenTabFileName}.o.li`);
+				terminal.sendText(`cargo run 63321 ${currentlyOpenTabFilePath} ${nameTMPPath}/${currentlyOpenTabFileName}.o ${nameTMPPath}/${currentlyOpenTabFileName}.o.li`);
 
 				// Exit when emulator quits
 				terminal.sendText('exit');
